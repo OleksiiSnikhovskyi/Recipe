@@ -22,10 +22,21 @@
 - [x] Create SETUP_GUIDE.md with complete step-by-step instructions
 
 ### In Progress 🔄
-- [ ] Run setup_database.py to create recipe_db on Markiz
-- [ ] Import existing recipes from Nextcloud
+- [ ] Deploy Python services on Markiz
+- [ ] Import n8n workflows into n8n.csc-ua.tech
+- [ ] Test end-to-end workflow
 
-### TODO 📋
+##### Phase 2: n8n Workflows ✅ COMPLETE
+- [x] Design WF-01: Monitor YouTube Playlist (Scheduler)
+- [x] Design WF-02: Extract Recipe Data (HTTP → parse_recipe.py)
+- [x] Design WF-03: Generate DOCX (HTTP → generate_docx.py)
+- [x] Design WF-04: Convert to PDF (HTTP → pdf_converter.py)
+- [x] Design WF-05: Upload to Nextcloud (HTTP → nextcloud_uploader.py)
+- [x] Design WF-06: Notify Telegram (Telegram node + logging)
+- [x] Export all workflows to N8N_WORKFLOW_EXPORTS/ as JSON
+- [x] Create N8N_DEPLOYMENT_GUIDE.md with step-by-step instructions
+
+## TODO 📋
 
 #### Phase 1: Foundation (Week 1)
 - [ ] Set up PostgreSQL database with schema
@@ -44,7 +55,7 @@
 - [ ] Design and implement WF-06: Notify & Log (Telegram)
 - [ ] Export all workflows to `N8N_WORKFLOW_EXPORTS/`
 
-#### Phase 3: Integration & Testing (Week 3)
+#### Phase 3: Deployment & Testing (Week 2-3)
 - [ ] Test full pipeline end-to-end with sample video
 - [ ] Verify Telegram notifications
 - [ ] Verify Nextcloud uploads
