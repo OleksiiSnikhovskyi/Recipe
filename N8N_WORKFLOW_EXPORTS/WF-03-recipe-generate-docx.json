@@ -1,0 +1,126 @@
+{
+  "name": "WF-03-recipe Generate DOCX",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "recipe-docx",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5001' }}/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersUi": "json",
+        "jsonBody": "={\n  \"recipe\": {{ JSON.stringify($json.recipe || $json) }}\n}",
+        "options": {}
+      },
+      "id": "http_generate_docx",
+      "name": "Call generate_docx.py",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersUi": "json",
+        "jsonBody": "={\n  \"docx_base64\": \"{{ $json.docx_base64 }}\",\n  \"filename\": \"{{ $json.filename }}\",\n  \"recipe_id\": \"{{ $json.recipe?.metadata?.video_id || 'unknown' }}\"\n}",
+        "options": {}
+      },
+      "id": "http_trigger_pdf",
+      "name": "Call WF-04 (Convert to PDF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWithOptions": {
+          "respond": "usingResponseCode",
+          "responseCode": 200
+        },
+        "options": {}
+      },
+      "id": "response_success",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "http_generate_docx",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "response_success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http_generate_docx": {
+      "main": [
+        [
+          {
+            "node": "http_trigger_pdf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "description": "Generate DOCX file from recipe data using python-docx"
+}

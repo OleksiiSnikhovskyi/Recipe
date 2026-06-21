@@ -1,0 +1,180 @@
+{
+  "name": "WF-05-recipe Upload to Nextcloud",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "recipe-nextcloud",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5003' }}/upload",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersUi": "json",
+        "jsonBody": "={\n  \"docx_base64\": \"{{ $json.docx_base64 }}\",\n  \"pdf_base64\": \"{{ $json.pdf_base64 }}\",\n  \"filename\": \"{{ $json.filename }}\",\n  \"recipe_id\": \"{{ $json.recipe_id }}\"\n}",
+        "options": {}
+      },
+      "id": "http_upload_nextcloud",
+      "name": "Call nextcloud_uploader.py",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "host": "={{ $env.DB_HOST }}",
+        "port": "={{ $env.DB_PORT }}",
+        "database": "={{ $env.DB_NAME }}",
+        "user": "={{ $env.DB_USER }}",
+        "password": "={{ $env.DB_PASSWORD }}",
+        "ssl": false,
+        "query": "UPDATE recipes SET docx_path = @docx_path, pdf_path = @pdf_path, nextcloud_docx_url = @docx_url, nextcloud_pdf_url = @pdf_url, processed = true, updated_at = NOW() WHERE video_id = @video_id;",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "docx_path",
+              "value": "={{ $json.docx_path || '' }}"
+            },
+            {
+              "name": "pdf_path",
+              "value": "={{ $json.pdf_path || '' }}"
+            },
+            {
+              "name": "docx_url",
+              "value": "={{ $json.docx_url || '' }}"
+            },
+            {
+              "name": "pdf_url",
+              "value": "={{ $json.pdf_url || '' }}"
+            },
+            {
+              "name": "video_id",
+              "value": "={{ $json.recipe_id || '' }}"
+            }
+          ]
+        }
+      },
+      "id": "postgres_update_recipe",
+      "name": "Update Database with URLs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-telegram",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersUi": "json",
+        "jsonBody": "={\n  \"recipe_id\": \"{{ $json.recipe_id }}\",\n  \"urls\": {{ JSON.stringify($json) }}\n}",
+        "options": {}
+      },
+      "id": "http_trigger_telegram",
+      "name": "Call WF-06 (Telegram Notify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWithOptions": {
+          "respond": "usingResponseCode",
+          "responseCode": 200
+        },
+        "options": {}
+      },
+      "id": "response_success",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "http_upload_nextcloud",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "response_success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http_upload_nextcloud": {
+      "main": [
+        [
+          {
+            "node": "postgres_update_recipe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "postgres_update_recipe": {
+      "main": [
+        [
+          {
+            "node": "http_trigger_telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "description": "Upload DOCX and PDF to Nextcloud, update database with URLs"
+}

@@ -1,0 +1,153 @@
+{
+  "name": "WF-06-recipe Telegram Notify & Log",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "recipe-telegram",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "host": "={{ $env.DB_HOST }}",
+        "port": "={{ $env.DB_PORT }}",
+        "database": "={{ $env.DB_NAME }}",
+        "user": "={{ $env.DB_USER }}",
+        "password": "={{ $env.DB_PASSWORD }}",
+        "ssl": false,
+        "query": "SELECT title, category, youtube_url, youtube_channel FROM recipes WHERE video_id = @video_id;",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "video_id",
+              "value": "={{ $json.recipe_id }}"
+            }
+          ]
+        }
+      },
+      "id": "postgres_get_recipe",
+      "name": "Get Recipe Details",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "telegramApi": "={{ $env.N8N_CREDENTIAL_TELEGRAM_ID }}",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=✅ Новий рецепт оброблено\\n\\nНазва: {{ $json[0].title || 'Unknown' }}\\nКатегорія: {{ $json[0].category || 'Інше' }}\\nКанал: {{ $json[0].youtube_channel || 'Unknown' }}\\n\\n📄 DOCX: {{ $json.urls?.docx_url || 'Processing...' }}\\n📊 PDF: {{ $json.urls?.pdf_url || 'Processing...' }}\\n🎬 YouTube: {{ $json[0].youtube_url || 'N/A' }}",
+        "options": {}
+      },
+      "id": "telegram_send_message",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "host": "={{ $env.DB_HOST }}",
+        "port": "={{ $env.DB_PORT }}",
+        "database": "={{ $env.DB_NAME }}",
+        "user": "={{ $env.DB_USER }}",
+        "password": "={{ $env.DB_PASSWORD }}",
+        "ssl": false,
+        "query": "UPDATE video_log SET status = 'completed', updated_at = NOW() WHERE video_id = @video_id;",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "video_id",
+              "value": "={{ $json.recipe_id }}"
+            }
+          ]
+        }
+      },
+      "id": "postgres_mark_completed",
+      "name": "Mark as Completed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWithOptions": {
+          "respond": "usingResponseCode",
+          "responseCode": 200
+        },
+        "options": {}
+      },
+      "id": "response_success",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "postgres_get_recipe",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "response_success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "postgres_get_recipe": {
+      "main": [
+        [
+          {
+            "node": "telegram_send_message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "telegram_send_message": {
+      "main": [
+        [
+          {
+            "node": "postgres_mark_completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "description": "Send Telegram notification with recipe details and Nextcloud links, mark workflow as completed"
+}

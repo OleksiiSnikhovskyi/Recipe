@@ -1,0 +1,132 @@
+{
+  "name": "WF-01-recipe Monitor Playlist",
+  "nodes": [
+    {
+      "parameters": {
+        "interval": [
+          {
+            "recurrence": "everyNHours",
+            "value": 3
+          }
+        ]
+      },
+      "id": "trigger_scheduler",
+      "name": "Scheduler",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/youtube/v3/playlistItems?key={{$env.YOUTUBE_API_KEY}}&playlistId={{$env.YOUTUBE_PLAYLIST_ID}}&part=snippet&maxResults=50&order=date",
+        "authentication": "none",
+        "method": "GET",
+        "options": {}
+      },
+      "id": "http_youtube_api",
+      "name": "Fetch YouTube Playlist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-extract",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersUi": "json",
+        "jsonBody": "={\n  \"videoId\": \"{{ $item(0).snippet.resourceId.videoId }}\",\n  \"title\": \"{{ $item(0).snippet.title }}\",\n  \"description\": \"{{ $item(0).snippet.description }}\",\n  \"thumbnail\": \"{{ $item(0).snippet.thumbnails.medium.url }}\",\n  \"youtubeChannel\": \"{{ $item(0).snippet.channelTitle }}\",\n  \"publishedAt\": \"{{ $item(0).snippet.publishedAt }}\"\n}",
+        "options": {}
+      },
+      "id": "http_trigger_extraction",
+      "name": "Call WF-02 (Extract Recipe)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "host": "={{ $env.DB_HOST }}",
+        "port": "={{ $env.DB_PORT }}",
+        "database": "={{ $env.DB_NAME }}",
+        "user": "={{ $env.DB_USER }}",
+        "password": "={{ $env.DB_PASSWORD }}",
+        "ssl": false,
+        "query": "INSERT INTO video_log (video_id, playlist_id, processed, status, created_at) VALUES (@videoId, @playlistId, false, 'pending', NOW()) ON CONFLICT (video_id) DO NOTHING;",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "videoId",
+              "value": "={{ $item(0).snippet.resourceId.videoId }}"
+            },
+            {
+              "name": "playlistId",
+              "value": "={{ $env.YOUTUBE_PLAYLIST_ID }}"
+            }
+          ]
+        }
+      },
+      "id": "postgres_log_video",
+      "name": "Log Video to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        850,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "trigger_scheduler": {
+      "main": [
+        [
+          {
+            "node": "http_youtube_api",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http_youtube_api": {
+      "main": [
+        [
+          {
+            "node": "http_trigger_extraction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "postgres_log_video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "description": "Monitor YouTube playlist for new videos every 3 hours and trigger recipe extraction"
+}
