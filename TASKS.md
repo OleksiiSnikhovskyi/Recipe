@@ -1,17 +1,29 @@
 # TASKS.md — Recipe Automation Project
 
-## Current Session: 2026-06-21 — Project Initialization
+## Current Session: 2026-06-21 — Project Initialization & Setup
 
 ### Completed ✅
 - [x] Clone GitHub repository
 - [x] Create CLAUDE.md with full architecture documentation
 - [x] Create TASKS.md tracker
+- [x] Create directory structure (config/, docs/, scripts/, database/, N8N_WORKFLOW_EXPORTS/)
+- [x] Create PostgreSQL database schema (recipes, video_log, execution_log)
+- [x] Create configuration templates (.env.example, nextcloud_structure.md)
+- [x] Create comprehensive documentation (RECIPE_FORMAT.md, SETUP_GUIDE.md)
+- [x] Implement scripts:
+  - [x] setup_database.py — Create recipe_db and recipe_user on Markiz
+  - [x] parse_recipe.py — AI recipe extraction (Ollama + OpenAI)
+  - [x] import_recipes.py — Import from Nextcloud/YouTube
+  - [x] generate_docx.py — DOCX generation (skeleton)
+  - [x] pdf_converter.py — PDF conversion (skeleton)
+  - [x] nutrition_calculator.py — Nutrition facts (skeleton)
+  - [x] nextcloud_uploader.py — WebDAV upload (skeleton)
+- [x] Create .env.example for repository (no secrets)
+- [x] Create SETUP_GUIDE.md with complete step-by-step instructions
 
 ### In Progress 🔄
-- [ ] Create directory structure
-- [ ] Create configuration templates
-- [ ] Create database schema file
-- [ ] Create initial Python script stubs
+- [ ] Run setup_database.py to create recipe_db on Markiz
+- [ ] Import existing recipes from Nextcloud
 
 ### TODO 📋
 
