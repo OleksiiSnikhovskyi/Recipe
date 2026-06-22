@@ -5,7 +5,7 @@
       "parameters": {
         "path": "recipe-nextcloud",
         "method": "POST",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5003' }}/upload",
+        "url": "={{ $env.NEXTCLOUD_UPLOADER_URL || 'http://localhost:5003' }}/upload",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -85,7 +85,13 @@
       "position": [
         650,
         300
-      ]
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "MHjN5hbuya1gKM8g",
+          "name": "Postgres_Recipe"
+        }
+      }
     },
     {
       "parameters": {
@@ -133,38 +139,32 @@
     }
   ],
   "connections": {
-    "webhook_trigger": {
+    "Webhook": {
       "main": [
         [
           {
-            "node": "http_upload_nextcloud",
+            "node": "Call nextcloud_uploader.py",
             "type": "main",
             "index": 0
           },
           {
-            "node": "response_success",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "http_upload_nextcloud": {
+    "Call nextcloud_uploader.py": {
       "main": [
         [
           {
-            "node": "postgres_update_recipe",
+            "node": "Update Database with URLs",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "postgres_update_recipe": {
-      "main": [
-        [
+          },
           {
-            "node": "http_trigger_telegram",
+            "node": "Call WF-06 (Telegram Notify)",
             "type": "main",
             "index": 0
           }

@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS recipes (
     pdf_path VARCHAR(500),
     nextcloud_docx_url VARCHAR(500),
     nextcloud_pdf_url VARCHAR(500),
+    transcript TEXT,
+    transcript_language VARCHAR(32),
+    transcript_source VARCHAR(50),
+    transcription_warning TEXT,
     processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -32,7 +36,7 @@ CREATE TABLE IF NOT EXISTS recipes (
 -- =============================================
 CREATE TABLE IF NOT EXISTS video_log (
     id SERIAL PRIMARY KEY,
-    video_id VARCHAR(255) NOT NULL,
+    video_id VARCHAR(255) UNIQUE NOT NULL,
     playlist_id VARCHAR(255),
     processed BOOLEAN DEFAULT FALSE,
     status VARCHAR(50) DEFAULT 'pending',

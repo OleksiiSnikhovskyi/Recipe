@@ -5,7 +5,7 @@
       "parameters": {
         "path": "recipe-telegram",
         "method": "POST",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
@@ -30,7 +30,7 @@
           "parameters": [
             {
               "name": "video_id",
-              "value": "={{ $json.recipe_id }}"
+              "value": "={{ $('Webhook').item.json.recipe_id }}"
             }
           ]
         }
@@ -41,24 +41,53 @@
       "typeVersion": 2.3,
       "position": [
         450,
+        220
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "MHjN5hbuya1gKM8g",
+          "name": "Postgres_Recipe"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "merge_recipe_and_urls",
+      "name": "Merge Recipe and URLs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        650,
         300
       ]
     },
     {
       "parameters": {
-        "telegramApi": "={{ $env.N8N_CREDENTIAL_TELEGRAM_ID }}",
+        "operation": "sendMessage",
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=✅ Новий рецепт оброблено\\n\\nНазва: {{ $json[0].title || 'Unknown' }}\\nКатегорія: {{ $json[0].category || 'Інше' }}\\nКанал: {{ $json[0].youtube_channel || 'Unknown' }}\\n\\n📄 DOCX: {{ $json.urls?.docx_url || 'Processing...' }}\\n📊 PDF: {{ $json.urls?.pdf_url || 'Processing...' }}\\n🎬 YouTube: {{ $json[0].youtube_url || 'N/A' }}",
-        "options": {}
+        "text": "=✅ Новий рецепт оброблено\n\nНазва: {{ $json.title || 'Unknown' }}\nКатегорія: {{ $json.category || 'Інше' }}\nКанал: {{ $json.youtube_channel || 'Unknown' }}\n\n📄 DOCX: {{ $json.urls?.docx_url || 'Processing...' }}\n📊 PDF: {{ $json.urls?.pdf_url || 'Processing...' }}\n🎬 YouTube: {{ $json.youtube_url || 'N/A' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
       },
       "id": "telegram_send_message",
       "name": "Send Telegram Message",
       "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
+      "typeVersion": 1.2,
       "position": [
-        650,
+        850,
         300
-      ]
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "15FBWslyV5AvsHZc",
+          "name": "Telegram Recipe_Oleksii_bot"
+        }
+      }
     },
     {
       "parameters": {
@@ -68,7 +97,7 @@
         "user": "={{ $env.DB_USER }}",
         "password": "={{ $env.DB_PASSWORD }}",
         "ssl": false,
-        "query": "UPDATE video_log SET status = 'completed', updated_at = NOW() WHERE video_id = @video_id;",
+        "query": "UPDATE video_log SET status = 'completed', processed = true, updated_at = NOW() WHERE video_id = @video_id;",
         "queryParameters": {
           "parameters": [
             {
@@ -83,9 +112,15 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.3,
       "position": [
-        850,
+        1050,
         300
-      ]
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "MHjN5hbuya1gKM8g",
+          "name": "Postgres_Recipe"
+        }
+      }
     },
     {
       "parameters": {
@@ -106,38 +141,54 @@
     }
   ],
   "connections": {
-    "webhook_trigger": {
+    "Webhook": {
       "main": [
         [
           {
-            "node": "postgres_get_recipe",
+            "node": "Get Recipe Details",
             "type": "main",
             "index": 0
           },
           {
-            "node": "response_success",
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Recipe and URLs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Recipe Details": {
+      "main": [
+        [
+          {
+            "node": "Merge Recipe and URLs",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "postgres_get_recipe": {
+    "Merge Recipe and URLs": {
       "main": [
         [
           {
-            "node": "telegram_send_message",
+            "node": "Send Telegram Message",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "telegram_send_message": {
+    "Send Telegram Message": {
       "main": [
         [
           {
-            "node": "postgres_mark_completed",
+            "node": "Mark as Completed",
             "type": "main",
             "index": 0
           }

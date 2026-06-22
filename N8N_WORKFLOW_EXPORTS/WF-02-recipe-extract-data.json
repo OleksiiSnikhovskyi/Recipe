@@ -3,202 +3,70 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "recipe-extract",
-        "method": "POST",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "typeVersion": 2,
+      "position": [250, 300]
     },
     {
       "parameters": {
-        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5000' }}/extract",
+        "url": "http://100.81.127.54:5010/extract",
         "method": "POST",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
         "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"description\": \"{{ $json.description }}\",\n  \"video_id\": \"{{ $json.videoId }}\",\n  \"youtube_channel\": \"{{ $json.youtubeChannel }}\",\n  \"video_url\": \"https://youtube.com/watch?v={{ $json.videoId }}\",\n  \"thumbnail_url\": \"{{ $json.thumbnail }}\",\n  \"published_date\": \"{{ $json.publishedAt }}\"\n}",
-        "options": {}
+        "specifyBody": "json",
+        "jsonBody": "={{ { title: $json.body.title || '', description: $json.body.description || '', video_id: $json.body.videoId || '', youtube_channel: $json.body.youtubeChannel || '', video_url: 'https://www.youtube.com/watch?v=' + ($json.body.videoId || ''), thumbnail_url: $json.body.thumbnail || '', published_date: $json.body.publishedAt || '' } }}",
+        "options": { "timeout": 900000 }
       },
       "id": "http_parse_recipe",
-      "name": "Call parse_recipe.py",
+      "name": "Transcribe and Extract Recipe",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        450,
-        300
-      ]
+      "position": [480, 300]
     },
     {
       "parameters": {
-        "host": "={{ $env.DB_HOST }}",
-        "port": "={{ $env.DB_PORT }}",
-        "database": "={{ $env.DB_NAME }}",
-        "user": "={{ $env.DB_USER }}",
-        "password": "={{ $env.DB_PASSWORD }}",
-        "ssl": false,
-        "query": "INSERT INTO recipes (title, category, description, recipe_text, ingredients, steps, nutrition, youtube_url, youtube_channel, thumbnail_url, video_id, processed, created_at) VALUES (@title, @category, @desc, @recipe, @ingredients, @steps, @nutrition, @youtube_url, @youtube_channel, @thumbnail, @video_id, false, NOW()) ON CONFLICT (video_id) DO UPDATE SET recipe_text = EXCLUDED.recipe_text;",
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "title",
-              "value": "={{ $json.title }}"
-            },
-            {
-              "name": "category",
-              "value": "={{ $json.category || 'Інше' }}"
-            },
-            {
-              "name": "desc",
-              "value": "={{ $json.description || '' }}"
-            },
-            {
-              "name": "recipe",
-              "value": "={{ JSON.stringify($json) }}"
-            },
-            {
-              "name": "ingredients",
-              "value": "={{ JSON.stringify($json.ingredients || []) }}"
-            },
-            {
-              "name": "steps",
-              "value": "={{ JSON.stringify($json.steps || []) }}"
-            },
-            {
-              "name": "nutrition",
-              "value": "={{ JSON.stringify($json.nutrition || {}) }}"
-            },
-            {
-              "name": "youtube_url",
-              "value": "={{ $json.source?.video_url || 'https://youtube.com/watch?v=' + $json.video_id }}"
-            },
-            {
-              "name": "youtube_channel",
-              "value": "={{ $json.source?.youtube_channel || 'Unknown' }}"
-            },
-            {
-              "name": "thumbnail",
-              "value": "={{ $json.source?.thumbnail_url || '' }}"
-            },
-            {
-              "name": "video_id",
-              "value": "={{ $json.source?.video_id || $json.video_id }}"
-            }
-          ]
+        "operation": "executeQuery",
+        "query": "INSERT INTO recipes (\n  title, category, description, recipe_text, ingredients, steps, nutrition,\n  youtube_url, youtube_channel, thumbnail_url, video_id,\n  transcript, transcript_language, transcript_source, transcription_warning,\n  processed, created_at, updated_at\n+) VALUES (\n  $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb,\n  $8, $9, $10, $11, $12, $13, $14, $15,\n  false, NOW(), NOW()\n+)\nON CONFLICT (video_id) DO UPDATE SET\n  title = EXCLUDED.title,\n  category = EXCLUDED.category,\n  description = EXCLUDED.description,\n  recipe_text = EXCLUDED.recipe_text,\n  ingredients = EXCLUDED.ingredients,\n  steps = EXCLUDED.steps,\n  nutrition = EXCLUDED.nutrition,\n  transcript = EXCLUDED.transcript,\n  transcript_language = EXCLUDED.transcript_language,\n  transcript_source = EXCLUDED.transcript_source,\n  transcription_warning = EXCLUDED.transcription_warning,\n  updated_at = NOW()\nRETURNING id, video_id, title;",
+        "additionalFields": {
+          "queryReplacement": "={{ [$json.title, $json.category || 'Інше', $json.description || '', JSON.stringify($json), JSON.stringify($json.ingredients || []), JSON.stringify($json.steps || []), JSON.stringify($json.nutrition || {}), $json.source?.video_url || ('https://www.youtube.com/watch?v=' + ($json.source?.video_id || '')), $json.source?.youtube_channel || '', $json.source?.thumbnail_url || '', $json.source?.video_id || $json.metadata?.video_id || '', $json.transcription?.text || '', $json.transcription?.language || '', $json.transcription?.source || 'description_only', $json.transcription?.warning || ''] }}"
         }
       },
       "id": "postgres_save_recipe",
-      "name": "Save to Database",
+      "name": "Save Recipe and Transcript",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.3,
-      "position": [
-        650,
-        300
-      ]
+      "typeVersion": 2.5,
+      "position": [720, 300],
+      "credentials": {
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
+      }
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-docx",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"recipe\": {{ JSON.stringify($json) }}\n}",
-        "options": {}
-      },
-      "id": "http_trigger_docx",
-      "name": "Call WF-03 (Generate DOCX)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        850,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "respondWithOptions": {
-          "respond": "usingResponseCode",
-          "responseCode": 200
-        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, recipe_id: $json.id, video_id: $json.video_id, title: $json.title } }}",
         "options": {}
       },
       "id": "response_success",
-      "name": "Respond to Webhook",
+      "name": "Respond After Completion",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        500
-      ]
+      "typeVersion": 1.1,
+      "position": [960, 300]
     }
   ],
   "connections": {
-    "webhook_trigger": {
-      "main": [
-        [
-          {
-            "node": "http_parse_recipe",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "response_success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "http_parse_recipe": {
-      "main": [
-        [
-          {
-            "node": "postgres_save_recipe",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "postgres_save_recipe": {
-      "main": [
-        [
-          {
-            "node": "http_trigger_docx",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Transcribe and Extract Recipe", "type": "main", "index": 0 }]] },
+    "Transcribe and Extract Recipe": { "main": [[{ "node": "Save Recipe and Transcript", "type": "main", "index": 0 }]] },
+    "Save Recipe and Transcript": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "description": "Extract recipe data from YouTube description using AI, save to database, trigger DOCX generation"
+  "settings": { "executionOrder": "v1" },
+  "description": "Transcribe one YouTube video, extract a Ukrainian recipe, persist it, then respond"
 }

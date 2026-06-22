@@ -5,7 +5,7 @@
       "parameters": {
         "path": "recipe-docx",
         "method": "POST",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5001' }}/generate",
+        "url": "={{ $env.GENERATE_DOCX_URL || 'http://localhost:5001' }}/generate",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": {
@@ -90,27 +90,27 @@
     }
   ],
   "connections": {
-    "webhook_trigger": {
+    "Webhook": {
       "main": [
         [
           {
-            "node": "http_generate_docx",
+            "node": "Call generate_docx.py",
             "type": "main",
             "index": 0
           },
           {
-            "node": "response_success",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "http_generate_docx": {
+    "Call generate_docx.py": {
       "main": [
         [
           {
-            "node": "http_trigger_pdf",
+            "node": "Call WF-04 (Convert to PDF)",
             "type": "main",
             "index": 0
           }

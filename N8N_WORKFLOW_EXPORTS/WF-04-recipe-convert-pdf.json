@@ -5,7 +5,7 @@
       "parameters": {
         "path": "recipe-pdf",
         "method": "POST",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
@@ -20,7 +20,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SCRIPTS_BASE_URL || 'http://localhost:5002' }}/convert",
+        "url": "={{ $env.PDF_CONVERTER_URL || 'http://localhost:5002' }}/convert",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -90,27 +90,27 @@
     }
   ],
   "connections": {
-    "webhook_trigger": {
+    "Webhook": {
       "main": [
         [
           {
-            "node": "http_convert_pdf",
+            "node": "Call pdf_converter.py",
             "type": "main",
             "index": 0
           },
           {
-            "node": "response_success",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "http_convert_pdf": {
+    "Call pdf_converter.py": {
       "main": [
         [
           {
-            "node": "http_trigger_nextcloud",
+            "node": "Call WF-05 (Upload to Nextcloud)",
             "type": "main",
             "index": 0
           }

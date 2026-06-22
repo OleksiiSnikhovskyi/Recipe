@@ -1,108 +1,80 @@
 # TASKS.md — Recipe Automation Project
 
-## Current Session: 2026-06-21 — Project Initialization & Setup
+## Current Session: 2026-06-21 — Sequential Processing & Transcription
+
+### Current State
+- Phase: `Deployment & Testing`
+- Repository: `28 files`, `5,551` lines
+- Database: `recipe_db` on Markiz is created and initialized
+- n8n: sequential replacements for `WF-01` and `WF-02` are ready locally
+- Python services: `parse_recipe.py` supports captions-first transcription with local Whisper fallback
 
 ### Completed ✅
-- [x] Clone GitHub repository
-- [x] Create CLAUDE.md with full architecture documentation
-- [x] Create TASKS.md tracker
-- [x] Create directory structure (config/, docs/, scripts/, database/, N8N_WORKFLOW_EXPORTS/)
-- [x] Create PostgreSQL database schema (recipes, video_log, execution_log)
-- [x] Create configuration templates (.env.example, nextcloud_structure.md)
-- [x] Create comprehensive documentation (RECIPE_FORMAT.md, SETUP_GUIDE.md)
-- [x] Implement scripts:
-  - [x] setup_database.py — Create recipe_db and recipe_user on Markiz
-  - [x] parse_recipe.py — AI recipe extraction (Ollama + OpenAI)
-  - [x] import_recipes.py — Import from Nextcloud/YouTube
-  - [x] generate_docx.py — DOCX generation (skeleton)
-  - [x] pdf_converter.py — PDF conversion (skeleton)
-  - [x] nutrition_calculator.py — Nutrition facts (skeleton)
-  - [x] nextcloud_uploader.py — WebDAV upload (skeleton)
-- [x] Create .env.example for repository (no secrets)
-- [x] Create SETUP_GUIDE.md with complete step-by-step instructions
+- [x] Create project documentation set (`CLAUDE.md`, `README.md`, `QUICK_START.md`, setup guides)
+- [x] Create repository structure (`config/`, `docs/`, `scripts/`, `database/`, `N8N_WORKFLOW_EXPORTS/`)
+- [x] Create PostgreSQL schema with:
+  - [x] `recipes`
+  - [x] `video_log`
+  - [x] `playlist_tracking`
+  - [x] `execution_log`
+- [x] Add `8` indexes for lookup and monitoring queries
+- [x] Add `3` analytics views
+- [x] Implement `scripts/setup_database.py`
+- [x] Implement `scripts/parse_recipe.py`
+- [x] Implement `scripts/import_recipes.py`
+- [x] Scaffold `scripts/generate_docx.py`
+- [x] Scaffold `scripts/pdf_converter.py`
+- [x] Scaffold `scripts/nutrition_calculator.py`
+- [x] Scaffold `scripts/nextcloud_uploader.py`
+- [x] Export all `6` n8n workflow JSON files
+- [x] Prepare Telegram bot credential for notifications
 
 ### In Progress 🔄
-- [ ] Deploy Python services on Markiz
-- [ ] Import n8n workflows into n8n.csc-ua.tech
-- [ ] Test end-to-end workflow
+- [x] Rebuild WF-01 as a batch-size-1 sequential loop
+- [x] Add atomic video claiming, duplicate protection, retries, and failure status handling
+- [x] Fix WF-02 webhook body access and delayed completion response
+- [x] Add multilingual YouTube caption/Whisper transcription to `parse_recipe.py`
+- [x] Add migration `002_sequential_video_processing.sql`
+- [x] Add and pass transcription fallback tests
+- [ ] Apply migration and service update on Markiz (network/SSH unavailable to Codex sandbox)
+- [ ] Deploy updated WF-01/WF-02 through n8n API (network unavailable to Codex sandbox)
+- [x] Confirm imported workflows use the connected `Postgres_Recipe` credential
+- [ ] Implement HTTP/CLI logic for `generate_docx.py`
+- [ ] Implement HTTP/CLI logic for `pdf_converter.py`
+- [ ] Implement upload/share logic for `nextcloud_uploader.py`
+- [ ] Implement nutrition calculation logic for `nutrition_calculator.py`
+- [ ] Test workflow chain from `WF-02` through `WF-06`
 
-##### Phase 2: n8n Workflows ✅ COMPLETE
-- [x] Design WF-01: Monitor YouTube Playlist (Scheduler)
-- [x] Design WF-02: Extract Recipe Data (HTTP → parse_recipe.py)
-- [x] Design WF-03: Generate DOCX (HTTP → generate_docx.py)
-- [x] Design WF-04: Convert to PDF (HTTP → pdf_converter.py)
-- [x] Design WF-05: Upload to Nextcloud (HTTP → nextcloud_uploader.py)
-- [x] Design WF-06: Notify Telegram (Telegram node + logging)
-- [x] Export all workflows to N8N_WORKFLOW_EXPORTS/ as JSON
-- [x] Create N8N_DEPLOYMENT_GUIDE.md with step-by-step instructions
+### Immediate Next Steps
+- [x] Relink PostgreSQL nodes to `Postgres_Recipe`
+- [x] Re-test the PostgreSQL credential connection
+- [ ] Decide implementation order for remaining services:
+  - [ ] `generate_docx.py`
+  - [ ] `pdf_converter.py`
+  - [ ] `nextcloud_uploader.py`
+  - [ ] `nutrition_calculator.py`
+- [ ] Run an isolated webhook test for `WF-02`
+- [ ] Perform first end-to-end dry run with a sample video payload
 
-## TODO 📋
+## Blockers & Risks
 
-#### Phase 1: Foundation (Week 1)
-- [ ] Set up PostgreSQL database with schema
-- [ ] Create .env template and document credentials setup
-- [ ] Implement `scripts/parse_recipe.py` (Ollama integration)
-- [ ] Implement `scripts/generate_docx.py` (python-docx)
-- [ ] Test Python scripts locally with sample recipe data
-- [ ] Create Nextcloud folder structure
+### Active Blockers
+- Codex sandbox cannot establish TCP/SSH connectivity to Markiz or `n8n.csc-ua.tech`; live migration and deployment remain pending.
+- `WF-02` through `WF-05` depend on Python services that are still skeletons.
 
-#### Phase 2: n8n Workflows (Week 2)
-- [ ] Design and implement WF-01: Monitor Playlist (scheduler)
-- [ ] Design and implement WF-02: Extract Recipe Data (HTTP + LLM)
-- [ ] Design and implement WF-03: Generate DOCX
-- [ ] Design and implement WF-04: Convert to PDF (LibreOffice)
-- [ ] Design and implement WF-05: Upload to Nextcloud
-- [ ] Design and implement WF-06: Notify & Log (Telegram)
-- [ ] Export all workflows to `N8N_WORKFLOW_EXPORTS/`
+### Security Note
+- Repository documentation must not contain live secrets.
+- `STATUS_REPORT.md` was sanitized on `2026-06-21`; keep real passwords only in local `.env` or secret storage.
 
-#### Phase 3: Deployment & Testing (Week 2-3)
-- [ ] Test full pipeline end-to-end with sample video
-- [ ] Verify Telegram notifications
-- [ ] Verify Nextcloud uploads
-- [ ] Verify database logging
-- [ ] Handle edge cases (duplicates, failed conversions)
-- [ ] Set up error notification workflow
+## Notes
 
-#### Phase 4: Enhancements (Week 4)
-- [ ] Implement manual trigger via Telegram bot (regenerate recipes)
-- [ ] Add recipe regeneration support
-- [ ] Add nutrition calculation refinement
-- [ ] Support for additional sources (Instagram, TikTok, custom text)
-- [ ] Performance optimization (batch processing)
+### n8n
+- `WF-01` URL: `https://n8n.csc-ua.tech/workflow/9QXzE48DP7rcZ0ft`
+- Telegram credential ID is present and appears ready for `WF-06`.
 
----
-
-## Implementation Notes
-
-### YouTube API
-- Setup: https://console.cloud.google.com/
-- Quota: 10k units/day (each playlist.list = 1 unit, videoDetails = 1 unit each)
-- Fallback: Use n8n's built-in YouTube node if quota insufficient
-
-### Ollama Models
-- Primary: `qwen3:8b` (best instruction-following, Ukrainian-aware)
-- Fallback: `qwen2.5:7b`, `llama3.2:3b`
-- Ensure model is pre-loaded on Markiz before workflows run
-
-### LibreOffice PDF Conversion
-- Install: `sudo apt-get install libreoffice`
-- Headless mode: `soffice --headless --convert-to pdf`
-- Output: Same directory as input DOCX
-- Timeout: 30 seconds per file
-
-### Nextcloud WebDAV
-- Endpoint: `https://nextcloud.domain/remote.php/dav/files/{user}/{path}`
-- Authentication: HTTPBasicAuth (user, password)
-- Upload: PUT request with file binary
-- Share: Use Nextcloud API to generate public share links
-
----
-
-## Blockers & Notes
-
-**None currently.** Ready to proceed with Phase 1.
-
----
+### Services
+- `parse_recipe.py` is the only confirmed running service at this stage.
+- Remaining service scripts still raise `NotImplementedError`, so they are not deployment-ready yet.
 
 ## Last Updated
-2026-06-21 by Claude Code (initialization)
+2026-06-21 by Codex

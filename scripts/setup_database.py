@@ -22,7 +22,7 @@ def setup_database(
     db_admin_password: str,
     new_db_name: str = "recipe_db",
     new_user: str = "recipe_user",
-    new_password: str = "RecipeSecure2026!"
+    new_password: str = ""
 ) -> bool:
     """
     Create recipe database and user on PostgreSQL.
@@ -209,7 +209,7 @@ def main():
     parser.add_argument("--password", help="Admin password (overrides .env)")
     parser.add_argument("--db-name", default="recipe_db", help="New database name")
     parser.add_argument("--db-user", default="recipe_user", help="New database user")
-    parser.add_argument("--db-password", default="RecipeSecure2026!", help="New user password")
+    parser.add_argument("--db-password", help="New user password (overrides RECIPE_DB_PASSWORD)")
     parser.add_argument("--schema-file", default="database/schema.sql", help="Path to schema.sql")
     parser.add_argument("--skip-schema", action="store_true", help="Skip schema initialization")
 
@@ -232,13 +232,18 @@ def main():
         print("❌ Database password not provided. Set DB_PASSWORD in .env or use --password")
         sys.exit(1)
 
+    new_user_password = args.db_password or os.getenv("RECIPE_DB_PASSWORD", "")
+    if not new_user_password:
+        print("❌ Recipe user password not provided. Set RECIPE_DB_PASSWORD or use --db-password")
+        sys.exit(1)
+
     # Step 1: Setup database and user
-    if not setup_database(db_host, db_port, db_user, db_password, args.db_name, args.db_user, args.db_password):
+    if not setup_database(db_host, db_port, db_user, db_password, args.db_name, args.db_user, new_user_password):
         sys.exit(1)
 
     # Step 2: Initialize schema
     if not args.skip_schema:
-        if not init_schema(db_host, db_port, args.db_name, args.db_user, args.db_password, args.schema_file):
+        if not init_schema(db_host, db_port, args.db_name, args.db_user, new_user_password, args.schema_file):
             print("⚠️  Schema initialization failed, but database setup is complete")
             sys.exit(1)
 

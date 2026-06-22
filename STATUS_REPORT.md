@@ -67,7 +67,7 @@ Recipe/
 - **Port:** `5432`
 - **Database:** `recipe_db` ✅ Created
 - **User:** `recipe_user` ✅ Created
-- **Password:** `RecipeSecure2026!`
+- **Password:** `REDACTED - stored outside the repository`
 - **Admin User:** `oleksiisnikhovskyi`
 
 ### Tables Created (4 tables)
@@ -318,14 +318,14 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=recipe_db
 DB_USER=recipe_user
-DB_PASSWORD=RecipeSecure2026!
+DB_PASSWORD=REDACTED
 
 OLLAMA_BASE_URL=http://100.81.127.54:11434
 OLLAMA_MODEL=qwen3:8b
 
 NEXTCLOUD_URL=https://nextcloud.csc-ua.tech
 NEXTCLOUD_USER=vagmechanik26@gmail.com
-NEXTCLOUD_PASSWORD=kJBKJb,wdms527
+NEXTCLOUD_PASSWORD=REDACTED
 
 YOUTUBE_PLAYLIST_URL=https://youtube.com/playlist?list=PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz
 

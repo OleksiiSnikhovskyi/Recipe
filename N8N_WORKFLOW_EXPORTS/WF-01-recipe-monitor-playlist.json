@@ -3,25 +3,17 @@
   "nodes": [
     {
       "parameters": {
-        "interval": [
-          {
-            "recurrence": "everyNHours",
-            "value": 3
-          }
-        ]
+        "interval": [{ "recurrence": "everyNHours", "value": 3 }]
       },
       "id": "trigger_scheduler",
       "name": "Scheduler",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "position": [200, 300]
     },
     {
       "parameters": {
-        "url": "=https://www.googleapis.com/youtube/v3/playlistItems?key={{$env.YOUTUBE_API_KEY}}&playlistId={{$env.YOUTUBE_PLAYLIST_ID}}&part=snippet&maxResults=50&order=date",
+        "url": "https://www.googleapis.com/youtube/v3/playlistItems?key=__YOUTUBE_API_KEY__&playlistId=PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz&part=snippet&maxResults=50",
         "authentication": "none",
         "method": "GET",
         "options": {}
@@ -30,103 +22,148 @@
       "name": "Fetch YouTube Playlist",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        450,
-        300
-      ],
-      "credentials": {}
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst videos = Array.isArray(response.items) ? response.items : [];\n\nreturn videos\n  .map((entry, index) => {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) return null;\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    return {\n      json: {\n        video_id: String(videoId),\n        playlist_id: playlistId,\n        title: String(snippet.title || ''),\n        description: String(snippet.description || ''),\n        thumbnail,\n        youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n        published_at: String(snippet.publishedAt || ''),\n        video_url: `https://www.youtube.com/watch?v=${videoId}`\n      },\n      pairedItem: { item: 0 }\n    };\n  })\n  .filter(Boolean);"
+      },
+      "id": "normalize_playlist_items",
+      "name": "Normalize Playlist Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": { "reset": false }
+      },
+      "id": "loop_videos",
+      "name": "Process Videos One by One",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH claimed AS (\n  INSERT INTO video_log (video_id, playlist_id, processed, status, created_at, updated_at)\n  VALUES ($1, $2, false, 'processing', NOW(), NOW())\n  ON CONFLICT (video_id) DO UPDATE SET\n    processed = false,\n    status = 'processing',\n    error_details = NULL,\n    updated_at = NOW()\n  WHERE video_log.status = 'failed'\n     OR (video_log.status = 'processing' AND video_log.updated_at < NOW() - INTERVAL '1 hour')\n  RETURNING video_id\n)\nSELECT\n  $1::text AS video_id,\n  $2::text AS playlist_id,\n  $3::text AS title,\n  $4::text AS description,\n  $5::text AS thumbnail,\n  $6::text AS youtube_channel,\n  $7::text AS published_at,\n  ('https://www.youtube.com/watch?v=' || $1::text) AS video_url,\n  EXISTS (SELECT 1 FROM claimed) AS is_new;",
+        "additionalFields": {
+          "queryReplacement": "={{ [$json.video_id, $json.playlist_id, $json.title, $json.description, $json.thumbnail, $json.youtube_channel, $json.published_at] }}"
+        }
+      },
+      "id": "claim_video",
+      "name": "Claim New Video",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1080, 420],
+      "credentials": {
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "condition_is_new",
+            "leftValue": "={{ $json.is_new }}",
+            "rightValue": "",
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_new_video",
+      "name": "Is New Video?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1300, 420]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-extract",
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-extract",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
         "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"videoId\": \"{{ $item(0).snippet.resourceId.videoId }}\",\n  \"title\": \"{{ $item(0).snippet.title }}\",\n  \"description\": \"{{ $item(0).snippet.description }}\",\n  \"thumbnail\": \"{{ $item(0).snippet.thumbnails.medium.url }}\",\n  \"youtubeChannel\": \"{{ $item(0).snippet.channelTitle }}\",\n  \"publishedAt\": \"{{ $item(0).snippet.publishedAt }}\"\n}",
-        "options": {}
+        "specifyBody": "json",
+        "jsonBody": "={{ { videoId: $json.video_id, title: $json.title, description: $json.description, thumbnail: $json.thumbnail, youtubeChannel: $json.youtube_channel, publishedAt: $json.published_at } }}",
+        "options": { "timeout": 900000 }
       },
       "id": "http_trigger_extraction",
       "name": "Call WF-02 (Extract Recipe)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        650,
-        300
-      ]
+      "position": [1520, 320],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "host": "={{ $env.DB_HOST }}",
-        "port": "={{ $env.DB_PORT }}",
-        "database": "={{ $env.DB_NAME }}",
-        "user": "={{ $env.DB_USER }}",
-        "password": "={{ $env.DB_PASSWORD }}",
-        "ssl": false,
-        "query": "INSERT INTO video_log (video_id, playlist_id, processed, status, created_at) VALUES (@videoId, @playlistId, false, 'pending', NOW()) ON CONFLICT (video_id) DO NOTHING;",
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "videoId",
-              "value": "={{ $item(0).snippet.resourceId.videoId }}"
-            },
-            {
-              "name": "playlistId",
-              "value": "={{ $env.YOUTUBE_PLAYLIST_ID }}"
-            }
-          ]
-        }
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "condition_extract_success",
+            "leftValue": "={{ !$json.error }}",
+            "rightValue": "",
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "postgres_log_video",
-      "name": "Log Video to DB",
+      "id": "if_extraction_success",
+      "name": "Extraction Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1740, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE video_log SET processed = true, status = 'completed', error_details = NULL, updated_at = NOW() WHERE video_id = $1 RETURNING video_id, status;",
+        "additionalFields": { "queryReplacement": "={{ [$('Claim New Video').item.json.video_id] }}" }
+      },
+      "id": "mark_video_completed",
+      "name": "Mark Video Completed",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.3,
-      "position": [
-        850,
-        300
-      ]
+      "typeVersion": 2.5,
+      "position": [1960, 240],
+      "credentials": {
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE video_log SET processed = false, status = 'failed', error_details = $2, updated_at = NOW() WHERE video_id = $1 RETURNING video_id, status;",
+        "additionalFields": { "queryReplacement": "={{ [$('Claim New Video').item.json.video_id, JSON.stringify($json.error || $json)] }}" }
+      },
+      "id": "mark_video_failed",
+      "name": "Mark Video Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1960, 400],
+      "credentials": {
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
+      }
     }
   ],
   "connections": {
-    "trigger_scheduler": {
-      "main": [
-        [
-          {
-            "node": "http_youtube_api",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "http_youtube_api": {
-      "main": [
-        [
-          {
-            "node": "http_trigger_extraction",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "postgres_log_video",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Scheduler": { "main": [[{ "node": "Fetch YouTube Playlist", "type": "main", "index": 0 }]] },
+    "Fetch YouTube Playlist": { "main": [[{ "node": "Normalize Playlist Videos", "type": "main", "index": 0 }]] },
+    "Normalize Playlist Videos": { "main": [[{ "node": "Process Videos One by One", "type": "main", "index": 0 }]] },
+    "Process Videos One by One": { "main": [[], [{ "node": "Claim New Video", "type": "main", "index": 0 }]] },
+    "Claim New Video": { "main": [[{ "node": "Is New Video?", "type": "main", "index": 0 }]] },
+    "Is New Video?": { "main": [[{ "node": "Call WF-02 (Extract Recipe)", "type": "main", "index": 0 }], [{ "node": "Process Videos One by One", "type": "main", "index": 0 }]] },
+    "Call WF-02 (Extract Recipe)": { "main": [[{ "node": "Extraction Successful?", "type": "main", "index": 0 }]] },
+    "Extraction Successful?": { "main": [[{ "node": "Mark Video Completed", "type": "main", "index": 0 }], [{ "node": "Mark Video Failed", "type": "main", "index": 0 }]] },
+    "Mark Video Completed": { "main": [[{ "node": "Process Videos One by One", "type": "main", "index": 0 }]] },
+    "Mark Video Failed": { "main": [[{ "node": "Process Videos One by One", "type": "main", "index": 0 }]] }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "description": "Monitor YouTube playlist for new videos every 3 hours and trigger recipe extraction"
+  "settings": { "executionOrder": "v1" },
+  "description": "Sequentially claim and process new YouTube playlist videos with duplicate protection"
 }
