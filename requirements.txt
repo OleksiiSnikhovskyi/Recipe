@@ -47,7 +47,7 @@ jupyter==1.0.0                  # Jupyter notebooks (optional)
 
 # Async (for future improvements)
 aiohttp==3.9.1                  # Async HTTP (optional)
-asyncio-contextmanager==1.0.0   # Async context managers (optional)
+asyncio-contextmanager==1.0.1   # Async context managers (optional)
 
 # Production Server (optional)
 gunicorn==21.2.0                # WSGI server (for Flask deployment)
