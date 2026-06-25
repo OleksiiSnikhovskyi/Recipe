@@ -3,124 +3,52 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "recipe-docx",
-        "method": "POST",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "typeVersion": 2,
+      "position": [250, 300]
     },
     {
       "parameters": {
-        "url": "={{ $env.GENERATE_DOCX_URL || 'http://localhost:5001' }}/generate",
         "method": "POST",
+        "url": "http://172.18.0.1:5001/generate",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
         "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"recipe\": {{ JSON.stringify($json.recipe || $json) }}\n}",
-        "options": {}
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipe_id: $json.body.recipe_id || $json.body.id || '', video_id: $json.body.video_id || $json.body.videoId || '', recipe: $json.body.recipe || undefined } }}",
+        "options": { "timeout": 300000 }
       },
       "id": "http_generate_docx",
       "name": "Call generate_docx.py",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        450,
-        300
-      ]
+      "position": [500, 300]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-pdf",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"docx_base64\": \"{{ $json.docx_base64 }}\",\n  \"filename\": \"{{ $json.filename }}\",\n  \"recipe_id\": \"{{ $json.recipe?.metadata?.video_id || 'unknown' }}\"\n}",
-        "options": {}
-      },
-      "id": "http_trigger_pdf",
-      "name": "Call WF-04 (Convert to PDF)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        650,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "respondWithOptions": {
-          "respond": "usingResponseCode",
-          "responseCode": 200
-        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, title: $json.title, filename: $json.filename, docx_path: $json.docx_path, docx_url: $json.docx_url } }}",
         "options": {}
       },
       "id": "response_success",
-      "name": "Respond to Webhook",
+      "name": "Respond After DOCX",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        500
-      ]
+      "typeVersion": 1.1,
+      "position": [750, 300]
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Call generate_docx.py",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call generate_docx.py": {
-      "main": [
-        [
-          {
-            "node": "Call WF-04 (Convert to PDF)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Call generate_docx.py", "type": "main", "index": 0 }]] },
+    "Call generate_docx.py": { "main": [[{ "node": "Respond After DOCX", "type": "main", "index": 0 }]] }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "description": "Generate DOCX file from recipe data using python-docx"
+  "settings": { "executionOrder": "v1" },
+  "description": "Generate DOCX for one recipe and store the local docx_path"
 }
