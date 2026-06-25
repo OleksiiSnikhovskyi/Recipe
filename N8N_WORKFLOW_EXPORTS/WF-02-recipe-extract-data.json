@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "url": "http://100.81.127.54:5010/extract",
+        "url": "http://172.18.0.1:5010/extract",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
