@@ -26,7 +26,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst videos = Array.isArray(response.items) ? response.items : [];\n\nreturn videos\n  .map((entry, index) => {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) return null;\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    return {\n      json: {\n        video_id: String(videoId),\n        playlist_id: playlistId,\n        title: String(snippet.title || ''),\n        description: String(snippet.description || ''),\n        thumbnail,\n        youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n        published_at: String(snippet.publishedAt || ''),\n        video_url: `https://www.youtube.com/watch?v=${videoId}`\n      },\n      pairedItem: { item: 0 }\n    };\n  })\n  .filter(Boolean);"
+        "jsCode": "const response = $input.first().json;\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst videos = Array.isArray(response.items) ? response.items : [];\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nreturn videos\n  .map((entry) => {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) return null;\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;\n    const normalized = {\n      video_id: String(videoId),\n      playlist_id: playlistId,\n      title: String(snippet.title || ''),\n      description: String(snippet.description || ''),\n      thumbnail,\n      youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n      published_at: String(snippet.publishedAt || ''),\n      video_url: videoUrl\n    };\n\n    return {\n      json: {\n        ...normalized,\n        sql_video_id: sqlQuote(normalized.video_id),\n        sql_playlist_id: sqlQuote(normalized.playlist_id),\n        sql_title: sqlQuote(normalized.title),\n        sql_description: sqlQuote(normalized.description),\n        sql_thumbnail: sqlQuote(normalized.thumbnail),\n        sql_youtube_channel: sqlQuote(normalized.youtube_channel),\n        sql_published_at: sqlQuote(normalized.published_at),\n        sql_video_url: sqlQuote(normalized.video_url)\n      },\n      pairedItem: { item: 0 }\n    };\n  })\n  .filter(Boolean);"
       },
       "id": "normalize_playlist_items",
       "name": "Normalize Playlist Videos",
@@ -48,10 +48,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH claimed AS (\n  INSERT INTO video_log (video_id, playlist_id, processed, status, created_at, updated_at)\n  VALUES ($1, $2, false, 'processing', NOW(), NOW())\n  ON CONFLICT (video_id) DO UPDATE SET\n    processed = false,\n    status = 'processing',\n    error_details = NULL,\n    updated_at = NOW()\n  WHERE video_log.status = 'failed'\n     OR (video_log.status = 'processing' AND video_log.updated_at < NOW() - INTERVAL '1 hour')\n  RETURNING video_id\n)\nSELECT\n  $1::text AS video_id,\n  $2::text AS playlist_id,\n  $3::text AS title,\n  $4::text AS description,\n  $5::text AS thumbnail,\n  $6::text AS youtube_channel,\n  $7::text AS published_at,\n  ('https://www.youtube.com/watch?v=' || $1::text) AS video_url,\n  EXISTS (SELECT 1 FROM claimed) AS is_new;",
-        "additionalFields": {
-          "queryReplacement": "={{ [$json.video_id, $json.playlist_id, $json.title, $json.description, $json.thumbnail, $json.youtube_channel, $json.published_at] }}"
-        }
+        "query": "={{ `WITH claimed AS (\n  INSERT INTO video_log (video_id, playlist_id, processed, status, created_at, updated_at)\n  VALUES (${$json.sql_video_id}, ${$json.sql_playlist_id}, false, 'processing', NOW(), NOW())\n  ON CONFLICT (video_id) DO UPDATE SET\n    processed = false,\n    status = 'processing',\n    error_details = NULL,\n    updated_at = NOW()\n  WHERE video_log.status = 'failed'\n     OR (video_log.status = 'processing' AND video_log.updated_at < NOW() - INTERVAL '1 hour')\n  RETURNING video_id\n)\nSELECT\n  ${$json.sql_video_id}::text AS video_id,\n  ${$json.sql_playlist_id}::text AS playlist_id,\n  ${$json.sql_title}::text AS title,\n  ${$json.sql_description}::text AS description,\n  ${$json.sql_thumbnail}::text AS thumbnail,\n  ${$json.sql_youtube_channel}::text AS youtube_channel,\n  ${$json.sql_published_at}::text AS published_at,\n  ${$json.sql_video_url}::text AS video_url,\n  EXISTS (SELECT 1 FROM claimed) AS is_new;` }}",
+        "additionalFields": {}
       },
       "id": "claim_video",
       "name": "Claim New Video",
@@ -123,8 +121,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE video_log SET processed = true, status = 'completed', error_details = NULL, updated_at = NOW() WHERE video_id = $1 RETURNING video_id, status;",
-        "additionalFields": { "queryReplacement": "={{ [$('Claim New Video').item.json.video_id] }}" }
+        "query": "={{ `UPDATE video_log SET processed = true, status = 'completed', error_details = NULL, updated_at = NOW() WHERE video_id = ${\"'\" + String($('Claim New Video').item.json.video_id || '').replace(/'/g, \"''\") + \"'\"} RETURNING video_id, status;` }}",
+        "additionalFields": {}
       },
       "id": "mark_video_completed",
       "name": "Mark Video Completed",
@@ -138,8 +136,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE video_log SET processed = false, status = 'failed', error_details = $2, updated_at = NOW() WHERE video_id = $1 RETURNING video_id, status;",
-        "additionalFields": { "queryReplacement": "={{ [$('Claim New Video').item.json.video_id, JSON.stringify($json.error || $json)] }}" }
+        "query": "={{ `UPDATE video_log SET processed = false, status = 'failed', error_details = ${\"'\" + JSON.stringify($json.error || $json).replace(/'/g, \"''\") + \"'\"}, updated_at = NOW() WHERE video_id = ${\"'\" + String($('Claim New Video').item.json.video_id || '').replace(/'/g, \"''\") + \"'\"} RETURNING video_id, status;` }}",
+        "additionalFields": {}
       },
       "id": "mark_video_failed",
       "name": "Mark Video Failed",
