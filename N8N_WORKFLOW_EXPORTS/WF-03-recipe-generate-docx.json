@@ -17,7 +17,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://172.18.0.1:5001/generate",
+        "url": "http://172.18.0.1:5011/generate",
         "sendHeaders": true,
         "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
         "sendBody": true,
