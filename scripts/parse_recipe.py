@@ -28,12 +28,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://100.81.127.54:11434")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://100.100.209.24:11434")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
-OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "600"))
+MAX_SOURCE_TEXT_CHARS = int(os.getenv("MAX_SOURCE_TEXT_CHARS", "24000"))
 TRANSCRIPTION_ENABLED = os.getenv("TRANSCRIPTION_ENABLED", "true").lower() == "true"
 WHISPER_FALLBACK_ENABLED = os.getenv("WHISPER_FALLBACK_ENABLED", "true").lower() == "true"
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
@@ -171,7 +172,13 @@ def build_source_text(title: str, description: str, transcription: Dict[str, Any
             f"(language: {transcription.get('language') or 'unknown'}):\n"
             f"{transcription['text']}"
         )
-    return "\n\n".join(sections)
+    source_text = "\n\n".join(sections)
+    if MAX_SOURCE_TEXT_CHARS > 0 and len(source_text) > MAX_SOURCE_TEXT_CHARS:
+        return (
+            source_text[:MAX_SOURCE_TEXT_CHARS]
+            + "\n\n[TRUNCATED: source text exceeded MAX_SOURCE_TEXT_CHARS]"
+        )
+    return source_text
 
 
 def extract_recipe_ollama(description: str, video_metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -454,6 +461,10 @@ def create_flask_app():
         return jsonify({
             "status": "ok",
             "provider": LLM_PROVIDER,
+            "ollama_base_url": OLLAMA_BASE_URL,
+            "ollama_model": OLLAMA_MODEL,
+            "ollama_timeout_seconds": OLLAMA_TIMEOUT_SECONDS,
+            "max_source_text_chars": MAX_SOURCE_TEXT_CHARS,
             "transcription_enabled": TRANSCRIPTION_ENABLED,
             "whisper_fallback_enabled": WHISPER_FALLBACK_ENABLED,
             "whisper_model": WHISPER_MODEL,

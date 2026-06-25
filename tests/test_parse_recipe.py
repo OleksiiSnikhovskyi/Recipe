@@ -23,6 +23,19 @@ def test_build_source_text_includes_all_available_sources():
     assert "VIDEO TRANSCRIPT (language: en):\nBoil for ten minutes" in result
 
 
+def test_build_source_text_truncates_large_context(monkeypatch):
+    monkeypatch.setattr(parse_recipe, "MAX_SOURCE_TEXT_CHARS", 40)
+
+    result = parse_recipe.build_source_text(
+        "Long recipe",
+        "x" * 100,
+        {"text": "y" * 100, "language": "en"},
+    )
+
+    assert len(result) > 40
+    assert "[TRUNCATED:" in result
+
+
 def test_transcription_prefers_youtube_captions(monkeypatch):
     expected = {
         "text": "caption text",
