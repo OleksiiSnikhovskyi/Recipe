@@ -94,7 +94,17 @@ def test_extract_recipe_enriches_result_with_transcription(monkeypatch):
     monkeypatch.setattr(
         parse_recipe,
         "extract_recipe_ollama",
-        lambda source_text, _metadata: {"title": "Борщ", "source_text": source_text},
+        lambda _source_text, metadata: parse_recipe.normalize_recipe(
+            {
+                "title": "Борщ",
+                "category": "Перші страви",
+                "ingredients": [{"name": "Буряк", "quantity": "2", "unit": "шт"}],
+                "steps": ["Додати буряк"],
+            },
+            metadata,
+            None,
+            "ollama:test",
+        ),
     )
     monkeypatch.setattr(parse_recipe, "LLM_PROVIDER", "ollama")
     transcription = {
@@ -111,5 +121,31 @@ def test_extract_recipe_enriches_result_with_transcription(monkeypatch):
     )
 
     assert result["description"] == "Vegetable soup"
+    assert result["schema_version"] == "1.1"
+    assert result["category"] == "Перші страви"
+    assert result["ingredients"][0]["quantity"] == 2.0
     assert result["transcription"] == transcription
-    assert "Add beetroot" in result["source_text"]
+
+
+def test_normalize_recipe_applies_schema_defaults():
+    result = parse_recipe.normalize_recipe(
+        {
+            "title": "Cake",
+            "category": "unknown",
+            "prep_time_minutes": "10",
+            "cook_time_minutes": "20",
+            "ingredients": ["Sugar"],
+            "steps": [{"instruction": "Mix"}],
+            "nutrition": {},
+        },
+        {"video_id": "abc123", "video_url": "https://youtu.be/abc123"},
+        {"source": "description_only", "language": "", "warning": "", "text": ""},
+        "ollama:test",
+    )
+
+    assert result["schema_version"] == "1.1"
+    assert result["category"] == "Інше"
+    assert result["total_time_minutes"] == 30.0
+    assert result["ingredients"][0] == {"name": "Sugar", "quantity": None, "unit": "", "notes": ""}
+    assert result["steps"][0]["step_number"] == 1
+    assert result["metadata"]["extraction_method"] == "ollama:test"

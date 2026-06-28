@@ -19,7 +19,7 @@ import argparse
 import requests
 import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import os
 from dotenv import load_dotenv
@@ -42,6 +42,42 @@ WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
 _whisper_model = None
+
+VALID_CATEGORIES = {
+    "Перші страви",
+    "Другі страви",
+    "Салати",
+    "Закуски",
+    "Випічка",
+    "Десерти",
+    "Напої",
+    "Інше",
+}
+
+RECIPE_SCHEMA_PROMPT = """Return ONLY valid JSON matching Recipe Schema v1.1:
+{
+  "schema_version": "1.1",
+  "title": "Recipe name in Ukrainian",
+  "category": "One of: Перші страви, Другі страви, Салати, Закуски, Випічка, Десерти, Напої, Інше",
+  "description": "Short summary in Ukrainian",
+  "servings": number or null,
+  "prep_time_minutes": number or null,
+  "cook_time_minutes": number or null,
+  "total_time_minutes": number or null,
+  "difficulty": "easy|medium|hard|null",
+  "ingredients": [
+    {"name": "...", "quantity": number or null, "unit": "...", "notes": ""}
+  ],
+  "steps": [
+    {"step_number": number, "instruction": "...", "duration_minutes": number or null, "notes": ""}
+  ],
+  "nutrition": {
+    "per_100g": {"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null},
+    "per_serving": {"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null}
+  },
+  "tags": ["optional Ukrainian tags"],
+  "warnings": ["optional uncertainty warnings"]
+}"""
 
 
 def _transcript_text(fetched: Any) -> str:
@@ -181,6 +217,154 @@ def build_source_text(title: str, description: str, transcription: Dict[str, Any
     return source_text
 
 
+def _number_or_none(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _text_or_empty(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _normalize_category(value: Any) -> str:
+    category = _text_or_empty(value)
+    return category if category in VALID_CATEGORIES else "Інше"
+
+
+def _normalize_ingredients(value: Any) -> list:
+    if not isinstance(value, list):
+        return []
+    normalized = []
+    for item in value:
+        if isinstance(item, str):
+            normalized.append({"name": item, "quantity": None, "unit": "", "notes": ""})
+            continue
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            "name": _text_or_empty(item.get("name")),
+            "quantity": _number_or_none(item.get("quantity")),
+            "unit": _text_or_empty(item.get("unit")),
+            "notes": _text_or_empty(item.get("notes")),
+        })
+    return [item for item in normalized if item["name"]]
+
+
+def _normalize_steps(value: Any) -> list:
+    if not isinstance(value, list):
+        return []
+    normalized = []
+    for index, item in enumerate(value, start=1):
+        if isinstance(item, str):
+            instruction = item
+            duration = None
+            notes = ""
+            step_number = index
+        elif isinstance(item, dict):
+            instruction = item.get("instruction") or item.get("text") or item.get("description")
+            duration = item.get("duration_minutes")
+            notes = item.get("notes")
+            step_number = _number_or_none(item.get("step_number")) or index
+        else:
+            continue
+        instruction = _text_or_empty(instruction)
+        if instruction:
+            normalized.append({
+                "step_number": int(step_number),
+                "instruction": instruction,
+                "duration_minutes": _number_or_none(duration),
+                "notes": _text_or_empty(notes),
+            })
+    return normalized
+
+
+def _normalize_nutrition(value: Any) -> Dict[str, Any]:
+    value = value if isinstance(value, dict) else {}
+
+    def block(name: str) -> Dict[str, Any]:
+        data = value.get(name) if isinstance(value.get(name), dict) else {}
+        return {
+            "calories": _number_or_none(data.get("calories")),
+            "protein": _number_or_none(data.get("protein")),
+            "fat": _number_or_none(data.get("fat")),
+            "carbohydrates": _number_or_none(data.get("carbohydrates")),
+        }
+
+    return {"per_100g": block("per_100g"), "per_serving": block("per_serving")}
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def normalize_recipe(
+    recipe: Dict[str, Any],
+    video_metadata: Dict[str, Any],
+    transcription: Optional[Dict[str, Any]],
+    extraction_method: str,
+) -> Dict[str, Any]:
+    """Normalize LLM output to Recipe Schema v1.1."""
+    transcription = transcription or {
+        "text": "",
+        "language": "",
+        "source": "description_only",
+        "warning": "",
+    }
+    recipe = recipe if isinstance(recipe, dict) else {}
+    source = recipe.get("source") if isinstance(recipe.get("source"), dict) else {}
+    metadata = recipe.get("metadata") if isinstance(recipe.get("metadata"), dict) else {}
+    prep_time = _number_or_none(recipe.get("prep_time_minutes"))
+    cook_time = _number_or_none(recipe.get("cook_time_minutes"))
+    total_time = _number_or_none(recipe.get("total_time_minutes"))
+    if total_time is None and (prep_time is not None or cook_time is not None):
+        total_time = (prep_time or 0) + (cook_time or 0)
+
+    normalized = {
+        "schema_version": "1.1",
+        "title": _text_or_empty(recipe.get("title")) or _text_or_empty(video_metadata.get("title")) or "Рецепт",
+        "category": _normalize_category(recipe.get("category")),
+        "description": _text_or_empty(recipe.get("description")),
+        "servings": _number_or_none(recipe.get("servings")),
+        "prep_time_minutes": prep_time,
+        "cook_time_minutes": cook_time,
+        "total_time_minutes": total_time,
+        "difficulty": recipe.get("difficulty") if recipe.get("difficulty") in {"easy", "medium", "hard"} else None,
+        "ingredients": _normalize_ingredients(recipe.get("ingredients")),
+        "steps": _normalize_steps(recipe.get("steps")),
+        "nutrition": _normalize_nutrition(recipe.get("nutrition")),
+        "tags": recipe.get("tags") if isinstance(recipe.get("tags"), list) else [],
+        "warnings": recipe.get("warnings") if isinstance(recipe.get("warnings"), list) else [],
+        "source": {
+            "video_id": video_metadata.get("video_id") or source.get("video_id"),
+            "video_url": video_metadata.get("video_url") or source.get("video_url"),
+            "youtube_channel": video_metadata.get("youtube_channel") or source.get("youtube_channel"),
+            "youtube_channel_url": video_metadata.get("youtube_channel_url") or source.get("youtube_channel_url"),
+            "thumbnail_url": video_metadata.get("thumbnail_url") or source.get("thumbnail_url"),
+            "published_date": video_metadata.get("published_date") or source.get("published_date"),
+        },
+        "metadata": {
+            "recipe_id": metadata.get("recipe_id"),
+            "video_id": video_metadata.get("video_id") or metadata.get("video_id"),
+            "extracted_at": metadata.get("extracted_at") or _iso_now(),
+            "extraction_method": extraction_method,
+            "language": "uk",
+        },
+        "transcription": {
+            "source": transcription.get("source", "description_only"),
+            "language": transcription.get("language", ""),
+            "warning": transcription.get("warning", ""),
+            "text": transcription.get("text", ""),
+        },
+    }
+    return normalized
+
+
 def extract_recipe_ollama(description: str, video_metadata: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract recipe using Ollama local model.
@@ -233,7 +417,9 @@ Return this JSON structure:
     "per_100g": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}},
     "per_serving": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}}
   }}
-}}"""
+}}
+
+{RECIPE_SCHEMA_PROMPT}"""
 
     try:
         # Call Ollama API
@@ -265,24 +451,7 @@ Return this JSON structure:
                 content = content.split("```")[1].split("```")[0]
             recipe_data = json.loads(content)
 
-        # Enrich with video metadata
-        recipe_data["source"] = {
-            "video_id": video_metadata.get("video_id"),
-            "video_url": video_metadata.get("video_url"),
-            "youtube_channel": video_metadata.get("youtube_channel"),
-            "youtube_channel_url": video_metadata.get("youtube_channel_url"),
-            "thumbnail_url": video_metadata.get("thumbnail_url"),
-            "published_date": video_metadata.get("published_date")
-        }
-
-        recipe_data["metadata"] = {
-            "video_id": video_metadata.get("video_id"),
-            "extracted_at": datetime.utcnow().isoformat() + "Z",
-            "extraction_method": f"ollama:{OLLAMA_MODEL}",
-            "language": "uk"
-        }
-
-        return recipe_data
+        return normalize_recipe(recipe_data, video_metadata, None, f"ollama:{OLLAMA_MODEL}")
 
     except Exception as e:
         print(f"Error calling Ollama: {str(e)}", file=sys.stderr)
@@ -340,7 +509,9 @@ Return this JSON structure:
     "per_100g": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}},
     "per_serving": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}}
   }}
-}}"""
+}}
+
+{RECIPE_SCHEMA_PROMPT}"""
 
     try:
         response = client.chat.completions.create(
@@ -356,24 +527,7 @@ Return this JSON structure:
         content = response.choices[0].message.content
         recipe_data = json.loads(content)
 
-        # Enrich with metadata
-        recipe_data["source"] = {
-            "video_id": video_metadata.get("video_id"),
-            "video_url": video_metadata.get("video_url"),
-            "youtube_channel": video_metadata.get("youtube_channel"),
-            "youtube_channel_url": video_metadata.get("youtube_channel_url"),
-            "thumbnail_url": video_metadata.get("thumbnail_url"),
-            "published_date": video_metadata.get("published_date")
-        }
-
-        recipe_data["metadata"] = {
-            "video_id": video_metadata.get("video_id"),
-            "extracted_at": datetime.utcnow().isoformat() + "Z",
-            "extraction_method": f"openai:{OPENAI_MODEL}",
-            "language": "uk"
-        }
-
-        return recipe_data
+        return normalize_recipe(recipe_data, video_metadata, None, f"openai:{OPENAI_MODEL}")
 
     except Exception as e:
         print(f"Error calling OpenAI: {str(e)}", file=sys.stderr)
@@ -409,8 +563,12 @@ def extract_recipe(
         recipe = extract_recipe_ollama(source_text, video_metadata)
 
     recipe["description"] = description
-    recipe["transcription"] = transcription
-    return recipe
+    return normalize_recipe(
+        recipe,
+        video_metadata,
+        transcription,
+        recipe.get("metadata", {}).get("extraction_method", LLM_PROVIDER),
+    )
 
 
 # =============================================

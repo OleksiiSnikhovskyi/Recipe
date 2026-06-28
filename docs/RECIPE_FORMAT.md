@@ -2,383 +2,225 @@
 
 ## Overview
 
-This document defines the JSON schema for recipe data throughout the Recipe Automation system. All recipes follow this structure from extraction through storage and document generation.
+This document defines the stable recipe contract used by WF-02 through WF-06.
+The canonical runtime format is **Recipe Schema v1.1**.
 
----
+All final recipe content must be in Ukrainian, regardless of the original YouTube
+title, description, or transcript language.
 
-## Complete Recipe Schema
+## Schema v1.1
 
 ```json
 {
-  "title": "Пісташкове тірамісу",
-  "category": "Десерти",
-  "description": "Класичне італійське тісто з пісташками та маскарпоне",
-  "servings": 8,
+  "schema_version": "1.1",
+  "title": "Борщ український",
+  "category": "Перші страви",
+  "description": "Короткий опис рецепта українською.",
+  "servings": 6,
   "prep_time_minutes": 20,
-  "cook_time_minutes": 240,
+  "cook_time_minutes": 90,
+  "total_time_minutes": 110,
   "difficulty": "medium",
-  "image_url": "https://i.ytimg.com/vi/xxx/maxresdefault.jpg",
-  
   "ingredients": [
     {
-      "name": "Печиво Ladyfinger",
-      "quantity": 400,
-      "unit": "г",
-      "calories_per_unit": 3.8,
-      "notes": "Можна замінити на печиво Savoiardi"
-    },
-    {
-      "name": "Сливки 35%",
-      "quantity": 500,
-      "unit": "мл",
-      "calories_per_unit": 3.5,
-      "notes": ""
-    },
-    {
-      "name": "Маскарпоне",
-      "quantity": 300,
-      "unit": "г",
-      "calories_per_unit": 4.2,
-      "notes": ""
-    },
-    {
-      "name": "Цукор",
-      "quantity": 100,
-      "unit": "г",
-      "calories_per_unit": 3.87,
-      "notes": ""
-    },
-    {
-      "name": "Какао порошок",
-      "quantity": 30,
-      "unit": "г",
-      "calories_per_unit": 1.2,
-      "notes": ""
-    },
-    {
-      "name": "Фісташки мелені",
-      "quantity": 100,
-      "unit": "г",
-      "calories_per_unit": 5.5,
-      "notes": "Для посипки зверху"
+      "name": "Буряк",
+      "quantity": 2,
+      "unit": "шт",
+      "notes": "середнього розміру"
     }
   ],
-  
   "steps": [
     {
       "step_number": 1,
-      "instruction": "Крок 1: Розбити печиво Ladyfinger на половини.",
-      "duration_minutes": 5,
+      "instruction": "Підготуйте овочі.",
+      "duration_minutes": 15,
       "notes": ""
-    },
-    {
-      "step_number": 2,
-      "instruction": "Крок 2: Збити 500 мл холодних сливок зі 100 г цукру до твердих піків (2-3 хвилини на середній швидкості).",
-      "duration_minutes": 3,
-      "notes": "Сливки мають бути холодними перед збиванням"
-    },
-    {
-      "step_number": 3,
-      "instruction": "Крок 3: Розмішати маскарпоне окремо, щоб розпушити.",
-      "duration_minutes": 2,
-      "notes": "Не перемішувати надто довго, маскарпоне може стати гільным"
-    },
-    {
-      "step_number": 4,
-      "instruction": "Крок 4: Акуратно помішати збиті сливки з маскарпоне.",
-      "duration_minutes": 2,
-      "notes": "Складувати акуратно, щоб зберегти повітря"
-    },
-    {
-      "step_number": 5,
-      "instruction": "Крок 5: Шаруватим способом викласти у форму або скляну чашу: печиво – крем – какао – фісташки.",
-      "duration_minutes": 5,
-      "notes": "Перший шар печиво, останній – фісташки на прикрасу"
-    },
-    {
-      "step_number": 6,
-      "instruction": "Крок 6: Охолодити в холодильнику протягом 4 годин (краще на ніч).",
-      "duration_minutes": 240,
-      "notes": "Мінімум 2 години, але краще залишити на ніч для краще консистенції"
     }
   ],
-  
   "nutrition": {
     "per_100g": {
-      "calories": 285,
-      "protein": 4.2,
-      "fat": 16.5,
-      "carbohydrates": 32.1
+      "calories": 45,
+      "protein": 1.5,
+      "fat": 2,
+      "carbohydrates": 6
     },
     "per_serving": {
-      "calories": 450,
-      "protein": 6.5,
-      "fat": 26.0,
-      "carbohydrates": 50.0
+      "calories": 180,
+      "protein": 6,
+      "fat": 8,
+      "carbohydrates": 24
     }
   },
-  
+  "tags": ["домашнє", "обід"],
+  "warnings": [],
   "source": {
-    "youtube_channel": "Канал Готування",
-    "youtube_channel_url": "https://www.youtube.com/@KanalHotuvannya",
-    "video_id": "dQw4w9WgXcQ",
-    "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    "video_title": "Піташкове тірамісу за 30 хвилин",
-    "published_date": "2025-06-15"
+    "video_id": "abc123",
+    "video_url": "https://www.youtube.com/watch?v=abc123",
+    "youtube_channel": "Канал",
+    "youtube_channel_url": "",
+    "thumbnail_url": "https://i.ytimg.com/...",
+    "published_date": "2026-06-20T17:28:32Z"
   },
-  
   "metadata": {
     "recipe_id": null,
-    "video_id": "dQw4w9WgXcQ",
-    "extracted_at": "2026-06-21T10:30:00Z",
+    "video_id": "abc123",
+    "extracted_at": "2026-06-28T10:00:00Z",
     "extraction_method": "ollama:qwen3:8b",
-    "ai_confidence": 0.92,
+    "language": "uk"
+  },
+  "transcription": {
+    "source": "youtube_captions",
     "language": "uk",
-    "total_time_minutes": 270
+    "warning": "",
+    "text": "Повний текст транскрипції для діагностики."
   }
 }
 ```
 
----
+## Required Fields
 
-## Field Specifications
+These fields must exist after `parse_recipe.py` normalization:
 
-### Top-Level Fields
+- `schema_version`: always `"1.1"`.
+- `title`: non-empty string, Ukrainian when known.
+- `category`: one of the valid categories below.
+- `description`: string, may be empty.
+- `servings`: number or `null`.
+- `prep_time_minutes`, `cook_time_minutes`, `total_time_minutes`: number or `null`.
+- `difficulty`: `"easy"`, `"medium"`, `"hard"`, or `null`.
+- `ingredients`: array of ingredient objects.
+- `steps`: array of step objects.
+- `nutrition`: object with `per_100g` and `per_serving`.
+- `tags`: array of strings.
+- `warnings`: array of strings.
+- `source`: YouTube metadata object.
+- `metadata`: extraction metadata object.
+- `transcription`: transcription diagnostics object.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `title` | string | ✅ | Recipe name in Ukrainian |
-| `category` | string | ✅ | One of: Перші страви, Другі страви, Салати, Закуски, Випічка, Десерти, Напої, Інше |
-| `description` | string | ❌ | Brief recipe description |
-| `servings` | number | ✅ | Number of servings this recipe makes |
-| `prep_time_minutes` | number | ❌ | Preparation time in minutes |
-| `cook_time_minutes` | number | ❌ | Cooking time in minutes |
-| `difficulty` | string | ❌ | One of: easy, medium, hard |
-| `image_url` | string | ❌ | URL to recipe image (usually YouTube thumbnail) |
+## Categories
 
-### Ingredients Array
+Use exact spelling:
 
-Each ingredient object:
+- `Перші страви`
+- `Другі страви`
+- `Салати`
+- `Закуски`
+- `Випічка`
+- `Десерти`
+- `Напої`
+- `Інше`
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | ✅ | Ingredient name |
-| `quantity` | number | ✅ | Numeric quantity |
-| `unit` | string | ✅ | Unit (г, мл, шт, кг, л, ч.л., ст.л., etc.) |
-| `calories_per_unit` | number | ❌ | Estimated calories per unit (for nutrition calc) |
-| `notes` | string | ❌ | Optional substitutions or notes |
+Unknown or invalid categories are normalized to `Інше`.
 
-### Steps Array
+## Ingredients
 
-Each step object:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `step_number` | number | ✅ | Sequential step number (1, 2, 3...) |
-| `instruction` | string | ✅ | Full instruction text |
-| `duration_minutes` | number | ❌ | How long this step takes |
-| `notes` | string | ❌ | Tips or warnings |
-
-### Nutrition Object
-
-Contains `per_100g` and `per_serving` objects:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `calories` | number | ❌ | Kilocalories (ккал) |
-| `protein` | number | ❌ | Grams of protein (г) |
-| `fat` | number | ❌ | Grams of fat (г) |
-| `carbohydrates` | number | ❌ | Grams of carbs (г) |
-
-### Source Object
-
-YouTube metadata:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `youtube_channel` | string | ✅ | Channel name |
-| `youtube_channel_url` | string | ❌ | Channel URL |
-| `video_id` | string | ✅ | YouTube video ID (11 chars) |
-| `video_url` | string | ✅ | Full video URL |
-| `video_title` | string | ❌ | Original video title |
-| `published_date` | string | ❌ | ISO 8601 date (YYYY-MM-DD) |
-
-### Metadata Object
-
-Internal tracking:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `recipe_id` | number | ❌ | Database ID after insertion |
-| `video_id` | string | ✅ | Same as source.video_id |
-| `extracted_at` | string | ✅ | ISO 8601 timestamp (UTC) |
-| `extraction_method` | string | ✅ | AI model used (e.g., "ollama:qwen3:8b") |
-| `ai_confidence` | number | ❌ | Confidence score 0-1 |
-| `language` | string | ✅ | Language code ("uk" for Ukrainian) |
-| `total_time_minutes` | number | ❌ | prep_time + cook_time |
-
----
-
-## Validation Rules
-
-### Required Fields (MVP)
-
-Minimum valid recipe must have:
-```json
-{
-  "title": "string (non-empty)",
-  "category": "string (must be in valid categories list)",
-  "servings": "number (> 0)",
-  "ingredients": "array (length > 0)",
-  "steps": "array (length > 0)",
-  "source": {
-    "video_id": "string (11 chars)",
-    "video_url": "string (valid YouTube URL)",
-    "youtube_channel": "string (non-empty)"
-  },
-  "metadata": {
-    "video_id": "string (must match source.video_id)",
-    "extracted_at": "ISO 8601 timestamp",
-    "extraction_method": "string",
-    "language": "uk"
-  }
-}
-```
-
-### Category Validation
-
-Valid categories (must use exact Ukrainian spelling):
-- Перші страви
-- Другі страви
-- Салати
-- Закуски
-- Випічка
-- Десерти
-- Напої
-- Інше
-
-### Unit Validation
-
-Valid units:
-- `г` (gram)
-- `мл` (milliliter)
-- `л` (liter)
-- `кг` (kilogram)
-- `шт` (piece)
-- `ч.л.` (teaspoon)
-- `ст.л.` (tablespoon)
-- `чашка` (cup)
-- `стакан` (glass)
-
-### Time Fields
-
-- `prep_time_minutes`: >= 0, must be number
-- `cook_time_minutes`: >= 0, must be number
-- `duration_minutes` (per step): >= 0, must be number
-- Total recipe time = prep_time + cook_time
-
-### Nutrition
-
-Per 100g values should be realistic:
-- `calories`: 0-900 (typical range)
-- `protein`, `fat`, `carbs`: 0-100
-
----
-
-## Example: Minimal Recipe (JSON)
+Each ingredient:
 
 ```json
 {
-  "title": "Борщ червоний",
-  "category": "Перші страви",
-  "servings": 6,
-  "ingredients": [
-    {"name": "Яйця сирі", "quantity": 4, "unit": "шт"},
-    {"name": "Цукор", "quantity": 100, "unit": "г"},
-    {"name": "Борошно", "quantity": 200, "unit": "г"},
-    {"name": "Масло вершкове", "quantity": 100, "unit": "г"}
-  ],
-  "steps": [
-    {"step_number": 1, "instruction": "Крок 1: Збити яйця зі цукром."},
-    {"step_number": 2, "instruction": "Крок 2: Додати борошно та масло."},
-    {"step_number": 3, "instruction": "Крок 3: Випікати при 180°C 30-40 хвилин."}
-  ],
-  "source": {
-    "youtube_channel": "Мої Рецепти",
-    "video_id": "dQw4w9WgXcQ",
-    "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  "name": "Борошно",
+  "quantity": 300,
+  "unit": "г",
+  "notes": "просіяти"
+}
+```
+
+Rules:
+
+- `name` is required and should be Ukrainian.
+- `quantity` is a number or `null`.
+- `unit` is a string. Examples: `г`, `кг`, `мл`, `л`, `шт`, `ч. л.`, `ст. л.`, `за смаком`.
+- `notes` is a string, empty if not needed.
+
+## Steps
+
+Each step:
+
+```json
+{
+  "step_number": 1,
+  "instruction": "Змішайте сухі інгредієнти.",
+  "duration_minutes": 5,
+  "notes": ""
+}
+```
+
+Rules:
+
+- `step_number` starts at `1` and is sequential.
+- `instruction` is required and should be Ukrainian.
+- `duration_minutes` is a number or `null`.
+- `notes` is a string, empty if not needed.
+
+## Nutrition
+
+```json
+{
+  "per_100g": {
+    "calories": 250,
+    "protein": 8,
+    "fat": 10,
+    "carbohydrates": 30
   },
-  "metadata": {
-    "video_id": "dQw4w9WgXcQ",
-    "extracted_at": "2026-06-21T10:30:00Z",
-    "extraction_method": "ollama:qwen3:8b",
-    "language": "uk"
+  "per_serving": {
+    "calories": 420,
+    "protein": 15,
+    "fat": 18,
+    "carbohydrates": 50
   }
 }
 ```
 
----
+Each value is a number or `null`. If nutrition cannot be estimated, keep the
+object shape and use `null` values.
 
-## Handling Missing Data
+## Source
 
-### If ingredient quantity is not specified:
-```json
-{"name": "Сіль", "quantity": null, "unit": "за смаком"}
-```
+`source` stores YouTube origin data:
 
-### If nutrition data unavailable:
-```json
-"nutrition": {
-  "per_100g": null,
-  "per_serving": null
-}
-```
+- `video_id`
+- `video_url`
+- `youtube_channel`
+- `youtube_channel_url`
+- `thumbnail_url`
+- `published_date`
 
-### If image not available:
-```json
-"image_url": null
-```
+WF-02 writes these fields into PostgreSQL columns as well as into `recipe_text`.
 
-Use `null` for missing optional fields, not empty strings.
+## Transcription
 
----
+`transcription.source` values:
 
-## AI Extraction Prompt Template
+- `youtube_captions`: manual YouTube subtitles.
+- `youtube_auto_captions`: automatic YouTube subtitles.
+- `whisper_audio`: local Whisper fallback from downloaded audio.
+- `description_only`: no transcript available; title/description were used.
 
-When calling LLM to extract recipe from YouTube description:
+`transcription.text` may be long. It is stored for diagnostics and future
+reprocessing, but DOCX output normally shows only source/language/warnings.
 
-```
-You are a professional recipe extraction specialist. Extract a complete, structured recipe from the provided YouTube video description. Follow these rules:
+## PostgreSQL Mapping
 
-1. Recipe must be in Ukrainian (Українська мова)
-2. Output must be valid JSON matching the provided schema
-3. Automatically detect category based on recipe content
-4. If nutrition data is not provided, use estimated USDA database values
-5. All monetary values should be ignored; focus on ingredients and instructions
-6. Clean and structure the text: remove filler, reorganize steps logically
-7. Always include: title, ingredients (with quantities), steps, category
+WF-02 stores:
 
-YouTube Description:
-{description_text}
+- Full normalized recipe JSON into `recipes.recipe_text`.
+- `ingredients` into `recipes.ingredients`.
+- `steps` into `recipes.steps`.
+- `nutrition` into `recipes.nutrition`.
+- Transcript text/source/language/warning into transcript columns.
+- YouTube metadata into `video_id`, `youtube_url`, `youtube_channel`, `thumbnail_url`.
 
-JSON Schema:
-{full_schema}
+WF-03 and later should prefer `recipes.recipe_text`, but may safely fall back to
+the structured columns.
 
-Return ONLY valid JSON, no markdown formatting, no explanations.
-```
+## Compatibility
 
----
+Schema v1.1 is compatible with:
 
-## Versioning & Compatibility
+- WF-02 Extract Recipe
+- WF-03 Generate DOCX
+- WF-04 Convert PDF
+- WF-05 Upload Nextcloud
+- WF-06 Telegram Notify
 
-**Current Schema Version:** 1.0
-- Date: 2026-06-21
-- Compatible workflows: WF-02, WF-03, WF-04, WF-05
-
-Future versions may add:
-- `cuisine_type` (Italian, Ukrainian, Asian, etc.)
-- `allergens` (array: gluten, dairy, nuts, etc.)
-- `cost_estimate` (currency, amount per serving)
-- `similar_recipes` (array of recipe IDs)
-
-Backward compatibility maintained: new fields are optional.
+Future optional fields may be added, but existing fields should not be renamed.
