@@ -3,124 +3,52 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "recipe-pdf",
-        "method": "POST",
         "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook_trigger",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        300
-      ]
+      "typeVersion": 2,
+      "position": [250, 300]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.PDF_CONVERTER_URL || 'http://localhost:5002' }}/convert",
+        "url": "http://172.18.0.1:5012/convert",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
         "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"docx_base64\": \"{{ $json.docx_base64 }}\",\n  \"filename\": \"{{ $json.filename }}\"\n}",
-        "options": {}
+        "specifyBody": "json",
+        "jsonBody": "={{ { docx_path: $json.body.docx_path || '', docx_base64: $json.body.docx_base64 || '', filename: $json.body.filename || '', recipe_id: $json.body.recipe_id || $json.body.id || '', video_id: $json.body.video_id || $json.body.videoId || '' } }}",
+        "options": { "timeout": 300000 }
       },
       "id": "http_convert_pdf",
       "name": "Call pdf_converter.py",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        450,
-        300
-      ]
+      "position": [500, 300]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/recipe-nextcloud",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParametersUi": "json",
-        "jsonBody": "={\n  \"docx_base64\": \"{{ $json.docx_base64 }}\",\n  \"pdf_base64\": \"{{ $json.pdf_base64 }}\",\n  \"filename\": \"{{ $json.filename }}\",\n  \"recipe_id\": \"{{ $json.recipe_id }}\"\n}",
-        "options": {}
-      },
-      "id": "http_trigger_nextcloud",
-      "name": "Call WF-05 (Upload to Nextcloud)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        650,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "respondWithOptions": {
-          "respond": "usingResponseCode",
-          "responseCode": 200
-        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, filename: $json.filename, docx_path: $json.docx_path, pdf_path: $json.pdf_path, pdf_url: $json.pdf_url } }}",
         "options": {}
       },
       "id": "response_success",
-      "name": "Respond to Webhook",
+      "name": "Respond After PDF",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        250,
-        500
-      ]
+      "typeVersion": 1.1,
+      "position": [750, 300]
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Call pdf_converter.py",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Call pdf_converter.py": {
-      "main": [
-        [
-          {
-            "node": "Call WF-05 (Upload to Nextcloud)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Call pdf_converter.py", "type": "main", "index": 0 }]] },
+    "Call pdf_converter.py": { "main": [[{ "node": "Respond After PDF", "type": "main", "index": 0 }]] }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "description": "Convert DOCX to PDF using LibreOffice Headless"
+  "settings": { "executionOrder": "v1" },
+  "description": "Convert one generated DOCX file to PDF and store the local pdf_path"
 }

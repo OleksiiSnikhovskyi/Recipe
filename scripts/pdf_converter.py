@@ -1,117 +1,203 @@
 #!/usr/bin/env python3
-"""
-pdf_converter.py
+"""Convert recipe DOCX files to PDF using LibreOffice Headless."""
 
-Convert DOCX to PDF using LibreOffice Headless.
-
-Usage:
-    python pdf_converter.py --input recipe.docx --output recipe.pdf
-
-    or as HTTP endpoint:
-    POST /convert
-    {"docx_path": "/path/to/file.docx"}
-"""
-
+import argparse
+import base64
+import os
 import subprocess
 import sys
-import argparse
-import os
 import tempfile
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuration
 LIBREOFFICE_PATH = os.getenv("LIBREOFFICE_PATH", "/usr/bin/soffice")
-PDF_CONVERSION_TIMEOUT = int(os.getenv("PDF_CONVERSION_TIMEOUT", 30))
+PDF_CONVERSION_TIMEOUT = int(os.getenv("PDF_CONVERSION_TIMEOUT", "120"))
+PDF_OUTPUT_DIR = Path(os.getenv("PDF_OUTPUT_DIR", "output/pdf"))
+PDF_PUBLIC_BASE_URL = os.getenv("PDF_PUBLIC_BASE_URL", "")
+
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_NAME = os.getenv("DB_NAME", "recipe_db")
+DB_USER = os.getenv("DB_USER", "recipe_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD") or os.getenv("RECIPE_DB_PASSWORD", "")
 
 
-def convert_docx_to_pdf(docx_path: str, pdf_path: str = None) -> str:
-    """
-    Convert DOCX file to PDF using LibreOffice Headless.
+def db_connection():
+    import psycopg2
 
-    Args:
-        docx_path: Path to input DOCX file
-        pdf_path: Path to output PDF file (default: same directory as docx_path)
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+    )
 
-    Returns:
-        Path to generated PDF file
-    """
 
-    # TODO: Implement DOCX to PDF conversion
-    # Requirements:
-    # 1. Check LibreOffice is installed
-    # 2. Validate input file exists
-    # 3. Run: soffice --headless --convert-to pdf --outdir /path /input.docx
-    # 4. Verify output file was created
-    # 5. Return PDF path
+def update_pdf_path(recipe_id: Optional[int], video_id: Optional[str], pdf_path: str) -> None:
+    if not recipe_id and not video_id:
+        return
+    where = "id = %s" if recipe_id else "video_id = %s"
+    value = recipe_id if recipe_id else video_id
+    with db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE recipes SET pdf_path = %s, updated_at = NOW() WHERE {where}",
+                (pdf_path, value),
+            )
 
-    raise NotImplementedError("PDF conversion not yet implemented")
+
+def expected_pdf_path(docx_path: Path, pdf_path: Optional[str] = None) -> Path:
+    if pdf_path:
+        return Path(pdf_path)
+    return docx_path.with_suffix(".pdf")
+
+
+def convert_docx_to_pdf(docx_path: str, pdf_path: Optional[str] = None) -> str:
+    """Convert DOCX file to PDF using LibreOffice Headless."""
+    input_path = Path(docx_path).expanduser().resolve()
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input DOCX file not found: {input_path}")
+    if input_path.suffix.lower() != ".docx":
+        raise ValueError(f"Input file must be .docx: {input_path}")
+
+    output_path = expected_pdf_path(input_path, pdf_path).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="recipe-libreoffice-") as profile_dir:
+        command = [
+            LIBREOFFICE_PATH,
+            "--headless",
+            "--nologo",
+            "--nofirststartwizard",
+            f"-env:UserInstallation=file://{Path(profile_dir).resolve()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(output_path.parent),
+            str(input_path),
+        ]
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=PDF_CONVERSION_TIMEOUT,
+            check=False,
+        )
+
+    generated_path = output_path.parent / f"{input_path.stem}.pdf"
+    if generated_path.exists() and generated_path != output_path:
+        generated_path.replace(output_path)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "LibreOffice conversion failed: "
+            f"exit={result.returncode}; stdout={result.stdout}; stderr={result.stderr}"
+        )
+    if not output_path.exists():
+        raise RuntimeError(
+            "LibreOffice did not create expected PDF: "
+            f"{output_path}; stdout={result.stdout}; stderr={result.stderr}"
+        )
+    return str(output_path)
+
+
+def write_docx_base64(docx_base64: str, filename: str) -> Path:
+    PDF_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(filename or "recipe.docx").name
+    if not safe_name.lower().endswith(".docx"):
+        safe_name += ".docx"
+    docx_path = PDF_OUTPUT_DIR / safe_name
+    docx_path.write_bytes(base64.b64decode(docx_base64))
+    return docx_path
+
+
+def public_url_for(path: str) -> str:
+    if not PDF_PUBLIC_BASE_URL:
+        return ""
+    return PDF_PUBLIC_BASE_URL.rstrip("/") + "/" + Path(path).name
+
+
+def create_flask_app():
+    try:
+        from flask import Flask, jsonify, request
+    except ImportError:
+        return None
+
+    app = Flask(__name__)
+
+    @app.route("/convert", methods=["POST"])
+    def convert_endpoint():
+        try:
+            data: Dict[str, Any] = request.get_json(silent=True) or {}
+            docx_path = data.get("docx_path")
+            if not docx_path and data.get("docx_base64"):
+                docx_path = str(write_docx_base64(data["docx_base64"], data.get("filename", "recipe.docx")))
+            if not docx_path:
+                return jsonify({"ok": False, "error": "docx_path or docx_base64 is required"}), 400
+
+            pdf_path = convert_docx_to_pdf(docx_path, data.get("pdf_path"))
+            recipe_id = data.get("recipe_id")
+            video_id = data.get("video_id") or data.get("videoId")
+            update_pdf_path(recipe_id, video_id, pdf_path)
+
+            pdf_bytes = Path(pdf_path).read_bytes()
+            return jsonify({
+                "ok": True,
+                "recipe_id": recipe_id,
+                "video_id": video_id,
+                "filename": Path(pdf_path).name,
+                "docx_path": docx_path,
+                "pdf_path": pdf_path,
+                "pdf_url": public_url_for(pdf_path),
+                "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+            }), 200
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        return jsonify({
+            "status": "ok",
+            "libreoffice_path": LIBREOFFICE_PATH,
+            "pdf_output_dir": str(PDF_OUTPUT_DIR),
+            "pdf_conversion_timeout": PDF_CONVERSION_TIMEOUT,
+        }), 200
+
+    return app
 
 
 def main():
-    """Command-line interface."""
     parser = argparse.ArgumentParser(description="Convert DOCX to PDF")
-    parser.add_argument("--input", "-i", required=True, help="Input DOCX file path")
-    parser.add_argument("--output", "-o", help="Output PDF file path (optional)")
+    parser.add_argument("--input", "-i", help="Input DOCX file path")
+    parser.add_argument("--output", "-o", help="Output PDF file path")
     parser.add_argument("--server", action="store_true", help="Run as Flask server")
-    parser.add_argument("--port", default=5002, type=int, help="Server port (default: 5002)")
-
+    parser.add_argument("--port", default=5012, type=int, help="Server port (default: 5012)")
     args = parser.parse_args()
 
     if args.server:
-        # TODO: Implement Flask server
-        # POST /convert
-        # Input: {"docx_path": "..."}
-        # Output: {"pdf_path": "...", "success": true}
-
-        try:
-            from flask import Flask, request, jsonify
-        except ImportError:
+        app = create_flask_app()
+        if not app:
             print("Error: Flask not installed. Install with: pip install flask", file=sys.stderr)
             sys.exit(1)
-
-        app = Flask(__name__)
-
-        @app.route("/convert", methods=["POST"])
-        def convert_endpoint():
-            try:
-                data = request.json
-                docx_path = data.get("docx_path")
-
-                if not docx_path:
-                    return jsonify({"error": "docx_path field required"}), 400
-
-                pdf_path = convert_docx_to_pdf(docx_path)
-
-                return jsonify({
-                    "pdf_path": pdf_path,
-                    "success": True
-                }), 200
-
-            except Exception as e:
-                return jsonify({"error": str(e)}), 500
-
-        @app.route("/health", methods=["GET"])
-        def health():
-            return jsonify({"status": "ok"}), 200
-
-        print(f"Starting Flask server on port {args.port}...")
+        print(f"Starting PDF Flask server on port {args.port}...")
         app.run(host="0.0.0.0", port=args.port, debug=False)
+        return
 
-    else:
-        # CLI mode
-        if not os.path.exists(args.input):
-            print(f"Error: Input file not found: {args.input}", file=sys.stderr)
-            sys.exit(1)
+    if not args.input:
+        parser.print_help()
+        sys.exit(1)
 
-        try:
-            pdf_path = convert_docx_to_pdf(args.input, args.output)
-            print(f"✓ Converted: {pdf_path}")
-        except Exception as e:
-            print(f"Conversion failed: {str(e)}", file=sys.stderr)
-            sys.exit(1)
+    try:
+        pdf_path = convert_docx_to_pdf(args.input, args.output)
+        print(f"Converted: {pdf_path}")
+    except Exception as exc:
+        print(f"Conversion failed: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
