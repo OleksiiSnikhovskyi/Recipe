@@ -4,7 +4,7 @@
     {
       "parameters": {
         "path": "recipe-telegram",
-        "method": "POST",
+        "httpMethod": "POST",
         "responseMode": "responseNode",
         "options": {}
       },

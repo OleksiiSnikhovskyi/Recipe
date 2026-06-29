@@ -4,7 +4,7 @@
     {
       "parameters": {
         "path": "recipe-nextcloud",
-        "method": "POST",
+        "httpMethod": "POST",
         "responseMode": "responseNode",
         "options": {}
       },
