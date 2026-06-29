@@ -262,3 +262,19 @@ def test_explicit_ingredients_drop_weaker_egg_duplicate():
 
     eggs = [item for item in deduped if item["name"].lower() in {"яйце", "яйця"}]
     assert eggs == [{"name": "яйця", "quantity": 4.0, "unit": "шт", "notes": ""}]
+
+
+def test_explicit_ingredients_default_missing_quantity_to_one_piece():
+    description = "Рецепт: цибуля; яйце; пара морквин; печериці 200 гр."
+
+    result = parse_recipe.extract_explicit_ingredients_from_description(description)
+    by_name = {item["name"].lower(): item for item in result}
+
+    assert by_name["цибуля"]["quantity"] == 1
+    assert by_name["цибуля"]["unit"] == "шт"
+    assert by_name["яйце"]["quantity"] == 1
+    assert by_name["яйце"]["unit"] == "шт"
+    assert by_name["морквин"]["quantity"] == 2
+    assert by_name["морквин"]["unit"] == "шт"
+    assert by_name["печериці"]["quantity"] == 200
+    assert by_name["печериці"]["unit"] == "г"

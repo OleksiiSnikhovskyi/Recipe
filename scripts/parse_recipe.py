@@ -296,6 +296,24 @@ def _clean_ingredient_name(value: str) -> str:
     return value.strip(" .,:;-")
 
 
+def _apply_default_countable_quantity(item: Dict[str, Any]) -> Dict[str, Any]:
+    name = _text_or_empty(item.get("name"))
+    if not name:
+        return item
+
+    lower_name = name.lower()
+    if lower_name.startswith("пара "):
+        item["name"] = _clean_ingredient_name(name[5:])
+        item["quantity"] = 2
+        item["unit"] = "шт"
+        return item
+
+    if item.get("quantity") is None and not item.get("unit"):
+        item["quantity"] = 1
+        item["unit"] = "шт"
+    return item
+
+
 def _parse_ingredient_fragment(fragment: str) -> Optional[Dict[str, Any]]:
     fragment = _clean_ingredient_name(fragment)
     if not fragment:
@@ -344,12 +362,12 @@ def _parse_ingredient_fragment(fragment: str) -> Optional[Dict[str, Any]]:
     if not name:
         return None
 
-    return {
+    return _apply_default_countable_quantity({
         "name": name,
         "quantity": quantity,
         "unit": unit,
         "notes": notes,
-    }
+    })
 
 
 def extract_explicit_ingredients_from_description(description: str) -> List[Dict[str, Any]]:
