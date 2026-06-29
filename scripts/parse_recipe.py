@@ -18,9 +18,10 @@ import sys
 import argparse
 import requests
 import tempfile
+import re
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 from dotenv import load_dotenv
 
@@ -53,6 +54,50 @@ VALID_CATEGORIES = {
     "Напої",
     "Інше",
 }
+
+CATEGORY_ALIASES = {
+    "main course": "Другі страви",
+    "main dish": "Другі страви",
+    "entree": "Другі страви",
+    "second course": "Другі страви",
+    "soup": "Перші страви",
+    "first course": "Перші страви",
+    "salad": "Салати",
+    "appetizer": "Закуски",
+    "starter": "Закуски",
+    "baking": "Випічка",
+    "bakery": "Випічка",
+    "dessert": "Десерти",
+    "drink": "Напої",
+    "beverage": "Напої",
+}
+
+UNIT_ALIASES = {
+    "гр": "г",
+    "грам": "г",
+    "грамів": "г",
+    "кг": "кг",
+    "мл": "мл",
+    "л": "л",
+    "шт": "шт",
+    "штук": "шт",
+    "яйця": "шт",
+    "яйце": "шт",
+    "зуб": "зубчик",
+    "зуб.": "зубчик",
+    "зубчики": "зубчик",
+    "ч л": "ч. л.",
+    "ч. л": "ч. л.",
+    "ч.л": "ч. л.",
+    "ст л": "ст. л.",
+    "ст. л": "ст. л.",
+    "ст.л": "ст. л.",
+}
+
+UNIT_PATTERN = (
+    r"кг|гр|г|грам(?:ів)?|мл|л|шт\.?|штук|зуб(?:\.|чики?)?|"
+    r"ч\.?\s*л\.?|ст\.?\s*л\.?"
+)
 
 RECIPE_SCHEMA_PROMPT = """Return ONLY valid JSON matching Recipe Schema v1.1:
 {
@@ -234,7 +279,131 @@ def _text_or_empty(value: Any) -> str:
 
 def _normalize_category(value: Any) -> str:
     category = _text_or_empty(value)
-    return category if category in VALID_CATEGORIES else "Інше"
+    if category in VALID_CATEGORIES:
+        return category
+    return CATEGORY_ALIASES.get(category.lower(), "Інше")
+
+
+def _normalize_unit(value: Any) -> str:
+    unit = re.sub(r"\s+", " ", _text_or_empty(value).lower()).strip(" .")
+    return UNIT_ALIASES.get(unit, _text_or_empty(value))
+
+
+def _clean_ingredient_name(value: str) -> str:
+    value = re.sub(r"\s+", " ", value)
+    value = value.strip(" .,:;-")
+    value = re.sub(r"^(рецепт|млинці|начинка|курка)\s*:\s*", "", value, flags=re.IGNORECASE)
+    return value.strip(" .,:;-")
+
+
+def _parse_ingredient_fragment(fragment: str) -> Optional[Dict[str, Any]]:
+    fragment = _clean_ingredient_name(fragment)
+    if not fragment:
+        return None
+
+    lower = fragment.lower()
+    if any(skip in lower for skip in ("youtube.com", "tiktok.com", "instagram.com", "більше рецептів")):
+        return None
+
+    quantity = None
+    unit = ""
+    name = fragment
+    notes = ""
+
+    number = r"\d+(?:[,.]\d+)?(?:\s*-\s*\d+(?:[,.]\d+)?)?"
+    leading = re.match(rf"^(?P<qty>{number})\s*(?P<unit>{UNIT_PATTERN})?\s+(?P<name>.+)$", fragment, re.IGNORECASE)
+    trailing = re.match(rf"^(?P<name>.+?)\s+(?P<qty>{number})\s*(?P<unit>{UNIT_PATTERN})?$", fragment, re.IGNORECASE)
+    upto = re.match(rf"^(?P<name>.+?)\s+до\s+(?P<qty>{number})\s*(?P<unit>{UNIT_PATTERN})$", fragment, re.IGNORECASE)
+    spoon_without_number = re.match(rf"^(?P<unit>ст\.?\s*л\.?|ч\.?\s*л\.?)\s+(?P<name>.+)$", fragment, re.IGNORECASE)
+
+    match = leading or upto or trailing
+    if match:
+        raw_quantity = match.group("qty").replace(",", ".").replace(" ", "")
+        if "-" in raw_quantity:
+            notes = f"кількість у джерелі: {match.group('qty')}"
+        else:
+            quantity = _number_or_none(raw_quantity)
+        unit = _normalize_unit(match.groupdict().get("unit") or "")
+        name = _clean_ingredient_name(match.group("name"))
+        if not unit and name.lower() in {"яйце", "яйця"}:
+            unit = "шт"
+            name = "яйця"
+        if upto:
+            notes = f"до {match.group('qty')} {unit}".strip()
+    elif spoon_without_number:
+        quantity = 1
+        unit = _normalize_unit(spoon_without_number.group("unit"))
+        name = _clean_ingredient_name(spoon_without_number.group("name"))
+    else:
+        egg_count = re.match(r"^(?P<qty>\d+(?:[,.]\d+)?)\s+(?P<name>яйц[яе])$", fragment, re.IGNORECASE)
+        if egg_count:
+            quantity = _number_or_none(egg_count.group("qty"))
+            unit = "шт"
+            name = "яйця"
+
+    if not name:
+        return None
+
+    return {
+        "name": name,
+        "quantity": quantity,
+        "unit": unit,
+        "notes": notes,
+    }
+
+
+def extract_explicit_ingredients_from_description(description: str) -> List[Dict[str, Any]]:
+    """Parse explicit semicolon-separated ingredient lists from video descriptions."""
+    if not description:
+        return []
+
+    text = re.sub(r"https?://\S+", " ", description)
+    recipe_match = re.search(
+        r"(?:рецепт|інгредієнти)\s*:?(?P<body>.+?)(?:\n\s*\n|більше рецептів|підпис|instagram|tiktok|$)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    body = recipe_match.group("body") if recipe_match else text
+    body = body.replace("\n", " ")
+    body = re.sub(r"\.\s+(?=[А-ЯІЇЄҐA-Z])", "; ", body)
+    fragments = re.split(r"[;•\n]+", body)
+
+    ingredients = []
+    seen = set()
+    for fragment in fragments:
+        item = _parse_ingredient_fragment(fragment)
+        if not item:
+            continue
+        key = (item["name"].lower(), item["quantity"], item["unit"])
+        if key in seen:
+            continue
+        seen.add(key)
+        ingredients.append(item)
+
+    return ingredients
+
+
+def _ingredient_quality_score(ingredients: List[Dict[str, Any]]) -> int:
+    score = 0
+    for item in ingredients:
+        if item.get("name"):
+            score += 1
+        if item.get("quantity") is not None:
+            score += 2
+        if item.get("unit"):
+            score += 1
+    return score
+
+
+def _prefer_explicit_ingredients(
+    llm_ingredients: List[Dict[str, Any]],
+    explicit_ingredients: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if len(explicit_ingredients) < 4:
+        return llm_ingredients
+    if _ingredient_quality_score(explicit_ingredients) >= _ingredient_quality_score(llm_ingredients):
+        return explicit_ingredients
+    return llm_ingredients
 
 
 def _normalize_ingredients(value: Any) -> list:
@@ -378,25 +547,28 @@ def extract_recipe_ollama(description: str, video_metadata: Dict[str, Any]) -> D
     """
 
     # System prompt for recipe extraction
-    system_prompt = """You are a professional recipe extraction specialist.
-Extract a complete, structured recipe from the provided YouTube video description.
+    system_prompt = """You are a precise culinary data extraction specialist.
+Extract a complete, structured recipe from the provided YouTube source text.
 The source may contain a title, description, and transcript in any language.
 Translate the final recipe into Ukrainian while preserving quantities and cooking details.
 
 Rules:
 1. Recipe must be in Ukrainian (Українська мова)
 2. Output must be valid JSON matching the provided schema
-3. Automatically detect category based on recipe content
-4. All steps must be numbered sequentially
-5. Include ingredients with quantities
-6. Clean and structure the text: remove filler, reorganize steps logically
-7. Estimate nutrition data if not provided
+3. If the description contains an explicit recipe/ingredient list, treat it as the most authoritative source
+4. Split semicolon-separated ingredients into individual ingredient objects
+5. Preserve exact quantities and units from the source; do not guess missing quantities
+6. Do not invent ingredients, steps, nutrition, times, or servings
+7. Use null for unknown numeric values and empty strings for unknown text notes
+8. Steps must describe actual cooking actions only; remove greetings, channel promos, and social links
+9. Keep the description short: 1-2 Ukrainian sentences about the dish, not the raw YouTube description
+10. Nutrition values must be null unless explicitly present in the source
 
 Valid categories: Перші страви, Другі страви, Салати, Закуски, Випічка, Десерти, Напої, Інше
 
 Return ONLY valid JSON, no markdown formatting, no explanations."""
 
-    user_prompt = f"""Extract recipe from this YouTube description:
+    user_prompt = f"""Extract recipe from this YouTube source text:
 
 {description}
 
@@ -414,8 +586,8 @@ Return this JSON structure:
     {{"step_number": number, "instruction": "...", "duration_minutes": number or null}}
   ],
   "nutrition": {{
-    "per_100g": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}},
-    "per_serving": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}}
+    "per_100g": {{"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null}},
+    "per_serving": {{"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null}}
   }}
 }}
 
@@ -482,13 +654,17 @@ def extract_recipe_openai(description: str, video_metadata: Dict[str, Any]) -> D
 
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-    system_prompt = """You are a professional recipe extraction specialist.
-Extract a complete, structured recipe from the provided YouTube video description.
+    system_prompt = """You are a precise culinary data extraction specialist.
+Extract a complete, structured recipe from the provided YouTube source text.
 The source may contain a title, description, and transcript in any language.
 Translate the final recipe into Ukrainian while preserving quantities and cooking details.
+If the description contains an explicit recipe/ingredient list, treat it as the most authoritative source.
+Never invent ingredients, steps, nutrition, times, or servings. Use null for unknown numeric values.
+Steps must describe actual cooking actions only; remove greetings, channel promos, and social links.
+Keep description to 1-2 Ukrainian sentences, not the raw YouTube description.
 Return ONLY valid JSON matching the schema provided, with no markdown formatting."""
 
-    user_prompt = f"""Extract recipe from this YouTube description:
+    user_prompt = f"""Extract recipe from this YouTube source text:
 
 {description}
 
@@ -506,8 +682,8 @@ Return this JSON structure:
     {{"step_number": number, "instruction": "...", "duration_minutes": number or null}}
   ],
   "nutrition": {{
-    "per_100g": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}},
-    "per_serving": {{"calories": number, "protein": number, "fat": number, "carbohydrates": number}}
+    "per_100g": {{"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null}},
+    "per_serving": {{"calories": number or null, "protein": number or null, "fat": number or null, "carbohydrates": number or null}}
   }}
 }}
 
@@ -520,7 +696,7 @@ Return this JSON structure:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7,
+            temperature=0.2,
             max_tokens=2000
         )
 
@@ -562,13 +738,24 @@ def extract_recipe(
     else:
         recipe = extract_recipe_ollama(source_text, video_metadata)
 
-    recipe["description"] = description
-    return normalize_recipe(
+    normalized = normalize_recipe(
         recipe,
         video_metadata,
         transcription,
         recipe.get("metadata", {}).get("extraction_method", LLM_PROVIDER),
     )
+    explicit_ingredients = _normalize_ingredients(
+        extract_explicit_ingredients_from_description(description)
+    )
+    normalized["ingredients"] = _prefer_explicit_ingredients(
+        normalized["ingredients"],
+        explicit_ingredients,
+    )
+    if not normalized["description"]:
+        normalized["description"] = _text_or_empty(video_metadata.get("title")) or normalized["title"]
+    if explicit_ingredients and explicit_ingredients == normalized["ingredients"]:
+        normalized["warnings"].append("Інгредієнти взято з явного списку в описі відео.")
+    return normalized
 
 
 # =============================================

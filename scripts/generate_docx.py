@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+import requests
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -198,6 +199,33 @@ def iter_ingredients(ingredients: Iterable[Dict[str, Any]]) -> Iterable[tuple]:
         )
 
 
+def _nutrition_has_values(nutrition: Dict[str, Any]) -> bool:
+    for key in ("per_100g", "per_serving"):
+        values = _as_dict(nutrition.get(key))
+        if any(values.get(name) not in (None, "") for name in ("calories", "protein", "fat", "carbohydrates")):
+            return True
+    return False
+
+
+def _add_thumbnail(doc: Document, thumbnail_url: str) -> None:
+    if not thumbnail_url:
+        return
+    try:
+        response = requests.get(thumbnail_url, timeout=20)
+        response.raise_for_status()
+        image = BytesIO(response.content)
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = paragraph.add_run()
+        run.add_picture(image, width=Inches(5.4))
+    except Exception as exc:
+        warning = doc.add_paragraph()
+        warning.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        warning_run = warning.add_run(f"Фото з YouTube не вдалося завантажити: {exc}")
+        warning_run.italic = True
+        warning_run.font.size = Pt(9)
+
+
 def generate_docx(recipe: Dict[str, Any]) -> bytes:
     """Generate DOCX document from recipe data."""
     doc = Document()
@@ -241,6 +269,8 @@ def generate_docx(recipe: Dict[str, Any]) -> bytes:
     summary.add_run(" | ".join(pieces))
     summary.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    _add_thumbnail(doc, source.get("thumbnail_url", ""))
+
     if recipe.get("description"):
         add_heading(doc, "Опис", 2)
         doc.add_paragraph(str(recipe["description"]))
@@ -283,7 +313,7 @@ def generate_docx(recipe: Dict[str, Any]) -> bytes:
     else:
         doc.add_paragraph("Кроки приготування не вказані.")
 
-    if nutrition:
+    if nutrition and _nutrition_has_values(nutrition):
         add_heading(doc, "Поживність", 2)
         table = doc.add_table(rows=1, cols=5)
         table.style = "Table Grid"

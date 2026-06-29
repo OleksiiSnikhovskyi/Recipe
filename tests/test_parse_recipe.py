@@ -98,6 +98,7 @@ def test_extract_recipe_enriches_result_with_transcription(monkeypatch):
             {
                 "title": "Борщ",
                 "category": "Перші страви",
+                "description": "Короткий опис борщу",
                 "ingredients": [{"name": "Буряк", "quantity": "2", "unit": "шт"}],
                 "steps": ["Додати буряк"],
             },
@@ -120,7 +121,7 @@ def test_extract_recipe_enriches_result_with_transcription(monkeypatch):
         transcription,
     )
 
-    assert result["description"] == "Vegetable soup"
+    assert result["description"] == "Короткий опис борщу"
     assert result["schema_version"] == "1.1"
     assert result["category"] == "Перші страви"
     assert result["ingredients"][0]["quantity"] == 2.0
@@ -149,3 +150,69 @@ def test_normalize_recipe_applies_schema_defaults():
     assert result["ingredients"][0] == {"name": "Sugar", "quantity": None, "unit": "", "notes": ""}
     assert result["steps"][0]["step_number"] == 1
     assert result["metadata"]["extraction_method"] == "ollama:test"
+
+
+def test_category_aliases_are_normalized():
+    assert parse_recipe._normalize_category("Main Course") == "Другі страви"
+    assert parse_recipe._normalize_category("dessert") == "Десерти"
+
+
+def test_extract_explicit_ingredients_from_description():
+    description = (
+        "Рецепт :Млинці : 4 яйця ; 500 мл молока ; 30 гр олії ; "
+        "0,5 ч л солі ; ст л цукру ; 0,5 ст л крохмаль ; 180 гр борошно . "
+        "Курка до 2 кг ; цибуля ; печериці 200 гр ; майонез 1-2 ст л ; "
+        "часник 4 зуб ; морква по корейські 200 гр ; яйце ; 100 мл молоко ."
+    )
+
+    result = parse_recipe.extract_explicit_ingredients_from_description(description)
+
+    by_name = {item["name"].lower(): item for item in result}
+    assert by_name["яйця"]["quantity"] == 4
+    assert by_name["яйця"]["unit"] == "шт"
+    assert by_name["молока"]["quantity"] == 500
+    assert by_name["молока"]["unit"] == "мл"
+    assert by_name["олії"]["quantity"] == 30
+    assert by_name["олії"]["unit"] == "г"
+    assert by_name["солі"]["quantity"] == 0.5
+    assert by_name["солі"]["unit"] == "ч. л."
+    assert by_name["цукру"]["quantity"] == 1
+    assert by_name["цукру"]["unit"] == "ст. л."
+    assert by_name["борошно"]["quantity"] == 180
+    assert by_name["борошно"]["unit"] == "г"
+    assert by_name["курка"]["unit"] == "кг"
+    assert "до 2" in by_name["курка"]["notes"]
+    assert by_name["печериці"]["quantity"] == 200
+    assert by_name["морква по корейські"]["quantity"] == 200
+
+
+def test_extract_recipe_prefers_explicit_description_ingredients(monkeypatch):
+    monkeypatch.setattr(
+        parse_recipe,
+        "extract_recipe_ollama",
+        lambda _source_text, metadata: parse_recipe.normalize_recipe(
+            {
+                "title": "Курка з млинцями",
+                "category": "Main Course",
+                "description": "Фарширована курка з млинцями.",
+                "ingredients": [{"name": "лимонний сік", "quantity": 1, "unit": "мл"}],
+                "steps": ["Підготувати курку"],
+            },
+            metadata,
+            None,
+            "ollama:test",
+        ),
+    )
+    monkeypatch.setattr(parse_recipe, "LLM_PROVIDER", "ollama")
+
+    result = parse_recipe.extract_recipe(
+        "Рецепт: Млинці: 4 яйця; 500 мл молока; Курка до 2 кг; печериці 200 гр.",
+        {"title": "Курка з млинцями", "video_id": "2XlxQoXUJGE"},
+        {"source": "description_only", "language": "", "warning": "", "text": ""},
+    )
+
+    names = {item["name"].lower() for item in result["ingredients"]}
+    assert "лимонний сік" not in names
+    assert {"яйця", "молока", "курка", "печериці"}.issubset(names)
+    assert result["category"] == "Другі страви"
+    assert result["description"] == "Фарширована курка з млинцями."
