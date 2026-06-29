@@ -59,23 +59,77 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, recipe_id: $json.id, video_id: $json.video_id, title: $json.title } }}",
+        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, title: $json.title, docx_path: $json.docx_path, pdf_path: $json.pdf_path, nextcloud_docx_url: $json.nextcloud_docx_url, nextcloud_pdf_url: $json.nextcloud_pdf_url } }}",
         "options": {}
       },
       "id": "response_success",
       "name": "Respond After Completion",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
+      "position": [1920, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-docx",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipe_id: $json.id, video_id: $json.video_id } }}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "http_generate_docx",
+      "name": "Call WF-03 (Generate DOCX)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
       "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-pdf",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipe_id: $json.recipe_id, video_id: $json.video_id, docx_path: $json.docx_path } }}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "http_convert_pdf",
+      "name": "Call WF-04 (Convert PDF)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-nextcloud",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipe_id: $json.recipe_id, video_id: $json.video_id, docx_path: $json.docx_path, pdf_path: $json.pdf_path } }}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "http_upload_nextcloud",
+      "name": "Call WF-05 (Upload Nextcloud)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1680, 300]
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Transcribe and Extract Recipe", "type": "main", "index": 0 }]] },
     "Transcribe and Extract Recipe": { "main": [[{ "node": "Prepare Recipe SQL", "type": "main", "index": 0 }]] },
     "Prepare Recipe SQL": { "main": [[{ "node": "Save Recipe and Transcript", "type": "main", "index": 0 }]] },
-    "Save Recipe and Transcript": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
+    "Save Recipe and Transcript": { "main": [[{ "node": "Call WF-03 (Generate DOCX)", "type": "main", "index": 0 }]] },
+    "Call WF-03 (Generate DOCX)": { "main": [[{ "node": "Call WF-04 (Convert PDF)", "type": "main", "index": 0 }]] },
+    "Call WF-04 (Convert PDF)": { "main": [[{ "node": "Call WF-05 (Upload Nextcloud)", "type": "main", "index": 0 }]] },
+    "Call WF-05 (Upload Nextcloud)": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "description": "Transcribe one YouTube video, extract a Ukrainian recipe, persist it, then respond"
+  "description": "Transcribe one YouTube video, extract a Ukrainian recipe, generate DOCX/PDF, upload to Nextcloud, then respond"
 }
