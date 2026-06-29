@@ -13,35 +13,36 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        250,
+        220,
         300
       ]
     },
     {
       "parameters": {
-        "host": "={{ $env.DB_HOST }}",
-        "port": "={{ $env.DB_PORT }}",
-        "database": "={{ $env.DB_NAME }}",
-        "user": "={{ $env.DB_USER }}",
-        "password": "={{ $env.DB_PASSWORD }}",
-        "ssl": false,
-        "query": "SELECT title, category, youtube_url, youtube_channel FROM recipes WHERE video_id = @video_id;",
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "video_id",
-              "value": "={{ $('Webhook').item.json.recipe_id }}"
-            }
-          ]
-        }
+        "jsCode": "const input = $json.body || $json;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined || value === '') return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction intOrNull(value) {\n  const parsed = Number.parseInt(value, 10);\n  return Number.isFinite(parsed) ? String(parsed) : 'NULL';\n}\n\nconst recipeId = input.recipe_id || input.id || '';\nconst videoId = input.video_id || input.videoId || '';\nconst docxUrl = input.nextcloud_docx_url || input.docx_share_link || input.docx_url || input.urls?.docx_url || '';\nconst pdfUrl = input.nextcloud_pdf_url || input.pdf_share_link || input.pdf_url || input.urls?.pdf_url || '';\n\nconst recipeIdSql = intOrNull(recipeId);\nconst videoIdSql = sqlQuote(videoId);\nconst docxUrlSql = sqlQuote(docxUrl);\nconst pdfUrlSql = sqlQuote(pdfUrl);\n\nconst findRecipeSql = `WITH input AS (\n  SELECT ${recipeIdSql}::integer AS recipe_id,\n         ${videoIdSql}::text AS video_id,\n         ${docxUrlSql}::text AS input_docx_url,\n         ${pdfUrlSql}::text AS input_pdf_url\n), selected AS (\n  SELECT r.*\n  FROM recipes r, input i\n  WHERE (i.recipe_id IS NOT NULL AND r.id = i.recipe_id)\n     OR (i.video_id IS NOT NULL AND i.video_id <> '' AND r.video_id = i.video_id)\n  ORDER BY r.updated_at DESC\n  LIMIT 1\n)\nSELECT\n  selected.id AS recipe_id,\n  selected.video_id,\n  selected.title,\n  selected.category,\n  selected.youtube_url,\n  selected.youtube_channel,\n  COALESCE(NULLIF(input.input_docx_url, ''), selected.nextcloud_docx_url, '') AS docx_url,\n  COALESCE(NULLIF(input.input_pdf_url, ''), selected.nextcloud_pdf_url, '') AS pdf_url\nFROM input\nLEFT JOIN selected ON TRUE;`;\n\nreturn [{ json: { recipe_id: recipeId, video_id: videoId, docx_url: docxUrl, pdf_url: pdfUrl, find_recipe_sql: findRecipeSql } }];"
+      },
+      "id": "prepare_lookup_sql",
+      "name": "Prepare Lookup SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.find_recipe_sql }}",
+        "additionalFields": {}
       },
       "id": "postgres_get_recipe",
       "name": "Get Recipe Details",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.3,
       "position": [
-        450,
-        220
+        700,
+        300
       ],
       "credentials": {
         "postgres": {
@@ -52,24 +53,9 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition",
-        "options": {}
-      },
-      "id": "merge_recipe_and_urls",
-      "name": "Merge Recipe and URLs",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        650,
-        300
-      ]
-    },
-    {
-      "parameters": {
         "operation": "sendMessage",
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=✅ Новий рецепт оброблено\n\nНазва: {{ $json.title || 'Unknown' }}\nКатегорія: {{ $json.category || 'Інше' }}\nКанал: {{ $json.youtube_channel || 'Unknown' }}\n\n📄 DOCX: {{ $json.urls?.docx_url || 'Processing...' }}\n📊 PDF: {{ $json.urls?.pdf_url || 'Processing...' }}\n🎬 YouTube: {{ $json.youtube_url || 'N/A' }}",
+        "text": "=✅ Новий рецепт оброблено\n\nНазва: {{ $json.title || 'Невідомий рецепт' }}\nКатегорія: {{ $json.category || 'Інше' }}\nКанал: {{ $json.youtube_channel || 'Невідомий канал' }}\n\n📄 DOCX: {{ $json.docx_url || 'посилання ще не створено' }}\n📊 PDF: {{ $json.pdf_url || 'посилання ще не створено' }}\n🎬 YouTube: {{ $json.youtube_url || 'N/A' }}",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -79,7 +65,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        850,
+        940,
         300
       ],
       "credentials": {
@@ -91,28 +77,29 @@
     },
     {
       "parameters": {
-        "host": "={{ $env.DB_HOST }}",
-        "port": "={{ $env.DB_PORT }}",
-        "database": "={{ $env.DB_NAME }}",
-        "user": "={{ $env.DB_USER }}",
-        "password": "={{ $env.DB_PASSWORD }}",
-        "ssl": false,
-        "query": "UPDATE video_log SET status = 'completed', processed = true, updated_at = NOW() WHERE video_id = @video_id;",
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "video_id",
-              "value": "={{ $json.recipe_id }}"
-            }
-          ]
-        }
+        "jsCode": "function sqlQuote(value) {\n  if (value === null || value === undefined || value === '') return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nconst videoId = $json.video_id || '';\nconst markCompletedSql = `UPDATE video_log\nSET status = 'completed',\n    processed = TRUE,\n    error_details = NULL,\n    updated_at = NOW()\nWHERE video_id = ${sqlQuote(videoId)};`;\n\nreturn [{ json: { ...$json, mark_completed_sql: markCompletedSql } }];"
+      },
+      "id": "prepare_completed_sql",
+      "name": "Prepare Completed SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.mark_completed_sql }}",
+        "additionalFields": {}
       },
       "id": "postgres_mark_completed",
       "name": "Mark as Completed",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.3,
       "position": [
-        1050,
+        1420,
         300
       ],
       "credentials": {
@@ -124,19 +111,17 @@
     },
     {
       "parameters": {
-        "respondWithOptions": {
-          "respond": "usingResponseCode",
-          "responseCode": 200
-        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, recipe_id: $('Get Recipe Details').item.json.recipe_id, video_id: $('Get Recipe Details').item.json.video_id, title: $('Get Recipe Details').item.json.title, docx_url: $('Get Recipe Details').item.json.docx_url, pdf_url: $('Get Recipe Details').item.json.pdf_url } }}",
         "options": {}
       },
       "id": "response_success",
-      "name": "Respond to Webhook",
+      "name": "Respond After Telegram",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
+      "typeVersion": 1.1,
       "position": [
-        250,
-        500
+        1660,
+        300
       ]
     }
   ],
@@ -145,35 +130,25 @@
       "main": [
         [
           {
+            "node": "Prepare Lookup SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Lookup SQL": {
+      "main": [
+        [
+          {
             "node": "Get Recipe Details",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge Recipe and URLs",
-            "type": "main",
-            "index": 1
           }
         ]
       ]
     },
     "Get Recipe Details": {
-      "main": [
-        [
-          {
-            "node": "Merge Recipe and URLs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge Recipe and URLs": {
       "main": [
         [
           {
@@ -188,7 +163,29 @@
       "main": [
         [
           {
+            "node": "Prepare Completed SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Completed SQL": {
+      "main": [
+        [
+          {
             "node": "Mark as Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Completed": {
+      "main": [
+        [
+          {
+            "node": "Respond After Telegram",
             "type": "main",
             "index": 0
           }
@@ -200,5 +197,5 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "description": "Send Telegram notification with recipe details and Nextcloud links, mark workflow as completed"
+  "description": "Send Telegram notification with recipe details and Nextcloud links, then mark video processing as completed."
 }
