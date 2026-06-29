@@ -215,7 +215,13 @@ def write_base64_file(encoded: str, filename: str, suffix: str) -> Path:
 def build_upload_inputs(data: Dict[str, Any]) -> Dict[str, Any]:
     recipe_id = data.get("recipe_id")
     video_id = data.get("video_id")
-    recipe = fetch_recipe(recipe_id=recipe_id, video_id=video_id) if (recipe_id or video_id) else {}
+    recipe: Dict[str, Any] = {}
+    needs_recipe_lookup = any(
+        not data.get(field)
+        for field in ("title", "category", "docx_path", "pdf_path")
+    )
+    if needs_recipe_lookup and (recipe_id or video_id):
+        recipe = fetch_recipe(recipe_id=recipe_id, video_id=video_id)
 
     title = data.get("title") or recipe.get("title") or "Recipe"
     category = data.get("category") or recipe.get("category") or "Інше"
@@ -293,6 +299,49 @@ def upload_to_nextcloud(**kwargs: Any) -> Dict[str, Any]:
     }
 
 
+def recipe_file_payload(**kwargs: Any) -> Dict[str, Any]:
+    """Return local recipe files as base64 for n8n native Nextcloud upload."""
+    inputs = build_upload_inputs(kwargs)
+    docx_path_value = inputs.get("docx_path")
+    pdf_path_value = inputs.get("pdf_path")
+
+    if not docx_path_value:
+        raise ValueError("docx_path or docx_base64 is required")
+    if not pdf_path_value:
+        raise ValueError("pdf_path or pdf_base64 is required")
+
+    docx_path = Path(docx_path_value)
+    pdf_path = Path(pdf_path_value)
+    if not docx_path.exists() or not docx_path.is_file():
+        raise FileNotFoundError(f"DOCX file not found: {docx_path}")
+    if not pdf_path.exists() or not pdf_path.is_file():
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    base_name = safe_filename(inputs["title"])
+    category = safe_filename(inputs["category"], "Інше")
+    remote_folder = normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER, category)
+    remote_docx_path = f"{remote_folder}/{base_name}.docx"
+    remote_pdf_path = f"{remote_folder}/{base_name}.pdf"
+
+    return {
+        "ok": True,
+        "recipe_id": inputs.get("recipe_id"),
+        "video_id": inputs.get("video_id"),
+        "title": inputs["title"],
+        "category": inputs["category"],
+        "docx_path": str(docx_path),
+        "pdf_path": str(pdf_path),
+        "nextcloud_root_folder": normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER),
+        "nextcloud_folder": remote_folder,
+        "remote_docx_path": remote_docx_path,
+        "remote_pdf_path": remote_pdf_path,
+        "docx_filename": Path(remote_docx_path).name,
+        "pdf_filename": Path(remote_pdf_path).name,
+        "docx_base64": base64.b64encode(docx_path.read_bytes()).decode("ascii"),
+        "pdf_base64": base64.b64encode(pdf_path.read_bytes()).decode("ascii"),
+    }
+
+
 def create_app():
     try:
         from flask import Flask, jsonify, request
@@ -306,6 +355,15 @@ def create_app():
         try:
             data = request.get_json(silent=True) or {}
             result = upload_to_nextcloud(**data)
+            return jsonify(result), 200
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+
+    @app.route("/payload", methods=["POST"])
+    def payload_endpoint():
+        try:
+            data = request.get_json(silent=True) or {}
+            result = recipe_file_payload(**data)
             return jsonify(result), 200
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 500

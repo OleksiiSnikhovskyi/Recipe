@@ -13,14 +13,14 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        240,
+        180,
         300
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://172.18.0.1:5013/upload",
+        "url": "http://172.18.0.1:5013/payload",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -32,32 +32,253 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  recipe_id: $json.recipe_id,\n  video_id: $json.video_id,\n  docx_path: $json.docx_path,\n  pdf_path: $json.pdf_path,\n  title: $json.title,\n  category: $json.category\n} }}",
+        "jsonBody": "={{ {\n  recipe_id: $json.body?.recipe_id || $json.recipe_id,\n  video_id: $json.body?.video_id || $json.video_id,\n  docx_path: $json.body?.docx_path || $json.docx_path,\n  pdf_path: $json.body?.pdf_path || $json.pdf_path,\n  title: $json.body?.title || $json.title,\n  category: $json.body?.category || $json.category\n} }}",
         "options": {
           "timeout": 300000
         }
       },
-      "id": "upload_nextcloud",
-      "name": "Upload to Nextcloud",
+      "id": "get_file_payload",
+      "name": "Get File Payload",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
-        480,
+        420,
         300
       ]
     },
     {
       "parameters": {
+        "authentication": "accessToken",
+        "resource": "folder",
+        "operation": "create",
+        "path": "={{ $json.nextcloud_root_folder }}"
+      },
+      "id": "ensure_root_folder",
+      "name": "Ensure Root Folder",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "folder",
+        "operation": "create",
+        "path": "={{ $('Get File Payload').item.json.nextcloud_folder }}"
+      },
+      "id": "ensure_category_folder",
+      "name": "Ensure Category Folder",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Get File Payload').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_docx_path,\n    filename: payload.docx_filename,\n    file_kind: 'docx'\n  },\n  binary: {\n    data: {\n      data: payload.docx_base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n      fileName: payload.docx_filename,\n      fileExtension: 'docx'\n    }\n  }\n}];"
+      },
+      "id": "prepare_docx_binary",
+      "name": "Prepare DOCX Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Get File Payload').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_pdf_path,\n    filename: payload.pdf_filename,\n    file_kind: 'pdf'\n  },\n  binary: {\n    data: {\n      data: payload.pdf_base64,\n      mimeType: 'application/pdf',\n      fileName: payload.pdf_filename,\n      fileExtension: 'pdf'\n    }\n  }\n}];"
+      },
+      "id": "prepare_pdf_binary",
+      "name": "Prepare PDF Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "file",
+        "operation": "upload",
+        "path": "={{ $json.remote_path }}",
+        "binaryDataUpload": true,
+        "binaryPropertyName": "data"
+      },
+      "id": "upload_docx",
+      "name": "Upload DOCX",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        180
+      ],
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "file",
+        "operation": "upload",
+        "path": "={{ $json.remote_path }}",
+        "binaryDataUpload": true,
+        "binaryPropertyName": "data"
+      },
+      "id": "upload_pdf",
+      "name": "Upload PDF",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        420
+      ],
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "file",
+        "operation": "share",
+        "path": "={{ $('Prepare DOCX Binary').item.json.remote_path }}",
+        "shareType": 3,
+        "options": {
+          "permissions": 1
+        }
+      },
+      "id": "share_docx",
+      "name": "Share DOCX",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        180
+      ],
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "file",
+        "operation": "share",
+        "path": "={{ $('Prepare PDF Binary').item.json.remote_path }}",
+        "shareType": 3,
+        "options": {
+          "permissions": 1
+        }
+      },
+      "id": "share_pdf",
+      "name": "Share PDF",
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1620,
+        420
+      ],
+      "credentials": {
+        "nextCloudApi": {
+          "id": "SDtHAXlGqmbqXsfq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "merge_shares",
+      "name": "Merge Share Links",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Get File Payload').item.json;\nconst docx = $('Share DOCX').item.json;\nconst pdf = $('Share PDF').item.json;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined || value === '') return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction intOrNull(value) {\n  const parsed = Number.parseInt(value, 10);\n  return Number.isFinite(parsed) ? String(parsed) : 'NULL';\n}\n\nconst docxUrl = docx.url || docx.link || '';\nconst pdfUrl = pdf.url || pdf.link || '';\nconst recipeIdSql = intOrNull(payload.recipe_id);\nconst videoIdSql = sqlQuote(payload.video_id);\n\nconst updateSql = `WITH updated_recipe AS (\n  UPDATE recipes\n  SET nextcloud_docx_url = ${sqlQuote(docxUrl)},\n      nextcloud_pdf_url = ${sqlQuote(pdfUrl)},\n      processed = TRUE,\n      updated_at = NOW()\n  WHERE (${recipeIdSql} IS NOT NULL AND id = ${recipeIdSql})\n     OR (${videoIdSql} IS NOT NULL AND video_id = ${videoIdSql})\n  RETURNING id, video_id, title, nextcloud_docx_url, nextcloud_pdf_url\n), updated_log AS (\n  UPDATE video_log\n  SET processed = TRUE,\n      status = 'completed',\n      error_details = NULL,\n      updated_at = NOW()\n  WHERE video_id = (SELECT video_id FROM updated_recipe LIMIT 1)\n  RETURNING video_id\n)\nSELECT * FROM updated_recipe;`;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    nextcloud_folder: payload.nextcloud_folder,\n    nextcloud_docx_url: docxUrl,\n    nextcloud_pdf_url: pdfUrl,\n    update_sql: updateSql\n  }\n}];"
+      },
+      "id": "prepare_update_sql",
+      "name": "Prepare Update SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.update_sql }}",
+        "additionalFields": {}
+      },
+      "id": "postgres_update_recipe",
+      "name": "Update Recipe URLs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        2340,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "MHjN5hbuya1gKM8g",
+          "name": "Postgres_Recipe"
+        }
+      }
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ $json }}",
+        "responseBody": "={{ { ok: true, recipe_id: $('Prepare Update SQL').item.json.recipe_id, video_id: $('Prepare Update SQL').item.json.video_id, title: $('Prepare Update SQL').item.json.title, docx_path: $('Prepare Update SQL').item.json.docx_path, pdf_path: $('Prepare Update SQL').item.json.pdf_path, nextcloud_folder: $('Prepare Update SQL').item.json.nextcloud_folder, nextcloud_docx_url: $('Prepare Update SQL').item.json.nextcloud_docx_url, nextcloud_pdf_url: $('Prepare Update SQL').item.json.nextcloud_pdf_url } }}",
         "options": {}
       },
       "id": "response_success",
-      "name": "Respond to Webhook",
+      "name": "Respond After Nextcloud Upload",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
+      "typeVersion": 1.1,
       "position": [
-        720,
+        2580,
         300
       ]
     }
@@ -67,18 +288,144 @@
       "main": [
         [
           {
-            "node": "Upload to Nextcloud",
+            "node": "Get File Payload",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upload to Nextcloud": {
+    "Get File Payload": {
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "Ensure Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Root Folder": {
+      "main": [
+        [
+          {
+            "node": "Ensure Category Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Category Folder": {
+      "main": [
+        [
+          {
+            "node": "Prepare DOCX Binary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare PDF Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare DOCX Binary": {
+      "main": [
+        [
+          {
+            "node": "Upload DOCX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Binary": {
+      "main": [
+        [
+          {
+            "node": "Upload PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload DOCX": {
+      "main": [
+        [
+          {
+            "node": "Share DOCX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PDF": {
+      "main": [
+        [
+          {
+            "node": "Share PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share DOCX": {
+      "main": [
+        [
+          {
+            "node": "Merge Share Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share PDF": {
+      "main": [
+        [
+          {
+            "node": "Merge Share Links",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Share Links": {
+      "main": [
+        [
+          {
+            "node": "Prepare Update SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Update SQL": {
+      "main": [
+        [
+          {
+            "node": "Update Recipe URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Recipe URLs": {
+      "main": [
+        [
+          {
+            "node": "Respond After Nextcloud Upload",
             "type": "main",
             "index": 0
           }
@@ -90,5 +437,5 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "description": "Upload generated DOCX and PDF files to Nextcloud and persist resulting URLs."
+  "description": "Upload generated DOCX/PDF files using the native n8n Nextcloud node and persist public share links."
 }

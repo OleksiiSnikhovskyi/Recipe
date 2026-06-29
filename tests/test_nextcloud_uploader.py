@@ -80,3 +80,27 @@ def test_create_share_link_returns_empty_on_failure(monkeypatch):
     monkeypatch.setattr(nextcloud_uploader, "NEXTCLOUD_CREATE_SHARES", True)
 
     assert nextcloud_uploader.create_share_link(FailingSession(), "/Documents/Recipe/a.pdf") == ""
+
+
+def test_recipe_file_payload_reads_local_files(monkeypatch, tmp_path):
+    docx_path = tmp_path / "recipe.docx"
+    pdf_path = tmp_path / "recipe.pdf"
+    docx_path.write_bytes(b"docx")
+    pdf_path.write_bytes(b"%PDF")
+
+    monkeypatch.setattr(nextcloud_uploader, "NEXTCLOUD_RECIPE_FOLDER", "/Documents/Recipe")
+
+    result = nextcloud_uploader.recipe_file_payload(
+        recipe_id=35,
+        video_id="abc123",
+        title="Курка з млинцями",
+        category="Основні страви",
+        docx_path=str(docx_path),
+        pdf_path=str(pdf_path),
+    )
+
+    assert result["ok"] is True
+    assert result["remote_docx_path"] == "/Documents/Recipe/Основні страви/Курка з млинцями.docx"
+    assert result["remote_pdf_path"] == "/Documents/Recipe/Основні страви/Курка з млинцями.pdf"
+    assert result["docx_base64"] == "ZG9jeA=="
+    assert result["pdf_base64"] == "JVBERg=="
