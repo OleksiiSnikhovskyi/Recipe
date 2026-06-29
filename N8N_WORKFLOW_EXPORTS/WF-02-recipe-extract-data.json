@@ -59,14 +59,14 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, title: $json.title, docx_path: $json.docx_path, pdf_path: $json.pdf_path, nextcloud_docx_url: $json.nextcloud_docx_url, nextcloud_pdf_url: $json.nextcloud_pdf_url } }}",
+        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, title: $json.title, docx_url: $json.docx_url, pdf_url: $json.pdf_url, telegram_notified: true } }}",
         "options": {}
       },
       "id": "response_success",
       "name": "Respond After Completion",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1920, 300]
+      "position": [2160, 300]
     },
     {
       "parameters": {
@@ -118,6 +118,23 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-telegram",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipe_id: $json.recipe_id, video_id: $json.video_id, nextcloud_docx_url: $json.nextcloud_docx_url, nextcloud_pdf_url: $json.nextcloud_pdf_url } }}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "http_notify_telegram",
+      "name": "Call WF-06 (Telegram Notify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1920, 300]
     }
   ],
   "connections": {
@@ -127,9 +144,10 @@
     "Save Recipe and Transcript": { "main": [[{ "node": "Call WF-03 (Generate DOCX)", "type": "main", "index": 0 }]] },
     "Call WF-03 (Generate DOCX)": { "main": [[{ "node": "Call WF-04 (Convert PDF)", "type": "main", "index": 0 }]] },
     "Call WF-04 (Convert PDF)": { "main": [[{ "node": "Call WF-05 (Upload Nextcloud)", "type": "main", "index": 0 }]] },
-    "Call WF-05 (Upload Nextcloud)": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
+    "Call WF-05 (Upload Nextcloud)": { "main": [[{ "node": "Call WF-06 (Telegram Notify)", "type": "main", "index": 0 }]] },
+    "Call WF-06 (Telegram Notify)": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "description": "Transcribe one YouTube video, extract a Ukrainian recipe, generate DOCX/PDF, upload to Nextcloud, then respond"
+  "description": "Transcribe one YouTube video, extract a Ukrainian recipe, generate DOCX/PDF, upload to Nextcloud, notify Telegram, then respond"
 }
