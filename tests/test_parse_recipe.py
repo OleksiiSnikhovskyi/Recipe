@@ -252,3 +252,13 @@ def test_extract_recipe_replaces_hallucinated_steps(monkeypatch):
     assert "піс" not in instructions
     assert "кислот" not in instructions
     assert "безпечну реконструкцію" in " ".join(result["warnings"])
+
+
+def test_explicit_ingredients_drop_weaker_egg_duplicate():
+    description = "Рецепт: Млинці: 4 яйця; 500 мл молока; яйце; 180 гр борошно."
+
+    result = parse_recipe.extract_explicit_ingredients_from_description(description)
+    deduped = parse_recipe._dedupe_ingredients(parse_recipe._normalize_ingredients(result))
+
+    eggs = [item for item in deduped if item["name"].lower() in {"яйце", "яйця"}]
+    assert eggs == [{"name": "яйця", "quantity": 4.0, "unit": "шт", "notes": ""}]

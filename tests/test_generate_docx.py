@@ -35,6 +35,11 @@ def sample_recipe():
             "video_url": "https://www.youtube.com/watch?v=abc123",
             "youtube_channel": "Кухня",
         },
+        "transcription": {
+            "source": "youtube_auto_captions",
+            "language": "uk",
+            "warning": "",
+        },
     }
 
 
@@ -52,6 +57,8 @@ def test_generate_docx_returns_readable_word_document():
         assert "Борщ український" in text
         assert "Інгредієнти" in text
         assert "Приготування" in text
+        assert "Транскрипція" not in text
+        assert "youtube_auto_captions" not in text
     finally:
         if output.exists():
             output.unlink()

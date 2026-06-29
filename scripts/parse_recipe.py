@@ -395,10 +395,41 @@ def _ingredient_quality_score(ingredients: List[Dict[str, Any]]) -> int:
     return score
 
 
+def _ingredient_identity(item: Dict[str, Any]) -> str:
+    name = _text_or_empty(item.get("name")).lower()
+    replacements = {
+        "яйце": "яйця",
+        "яйця": "яйця",
+    }
+    return replacements.get(name, name)
+
+
+def _dedupe_ingredients(ingredients: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop weaker duplicates, e.g. a blank 'яйце' when '4 яйця' exists."""
+    best_by_name = {}
+    order = []
+    for item in ingredients:
+        identity = _ingredient_identity(item)
+        if not identity:
+            continue
+        if identity not in best_by_name:
+            best_by_name[identity] = item
+            order.append(identity)
+            continue
+        current = best_by_name[identity]
+        current_score = _ingredient_quality_score([current])
+        candidate_score = _ingredient_quality_score([item])
+        if candidate_score > current_score:
+            best_by_name[identity] = item
+    return [best_by_name[identity] for identity in order]
+
+
 def _prefer_explicit_ingredients(
     llm_ingredients: List[Dict[str, Any]],
     explicit_ingredients: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
+    llm_ingredients = _dedupe_ingredients(llm_ingredients)
+    explicit_ingredients = _dedupe_ingredients(explicit_ingredients)
     if len(explicit_ingredients) < 4:
         return llm_ingredients
     if _ingredient_quality_score(explicit_ingredients) >= _ingredient_quality_score(llm_ingredients):

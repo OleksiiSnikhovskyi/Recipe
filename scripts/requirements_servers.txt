@@ -15,6 +15,7 @@ python-dotenv==1.0.0            # Load .env
 # Document Generation
 python-docx==0.8.11             # DOCX creation
 pdf2docx==0.5.1                 # PDF conversion tools
+qrcode[pil]>=7.4,<8             # QR codes for source video links
 
 # Data Processing
 openpyxl==3.1.2                 # Excel support

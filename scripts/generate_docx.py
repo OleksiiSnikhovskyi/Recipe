@@ -226,11 +226,35 @@ def _add_thumbnail(doc: Document, thumbnail_url: str) -> None:
         warning_run.font.size = Pt(9)
 
 
+def _add_video_qr(doc: Document, video_url: str) -> bool:
+    if not video_url:
+        return False
+    try:
+        import qrcode
+
+        image = qrcode.make(video_url)
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        caption = paragraph.add_run("QR-код відео")
+        caption.bold = True
+
+        qr_paragraph = doc.add_paragraph()
+        qr_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        qr_paragraph.add_run().add_picture(buffer, width=Inches(1.35))
+        return True
+    except Exception:
+        return False
+
+
 def generate_docx(recipe: Dict[str, Any]) -> bytes:
     """Generate DOCX document from recipe data."""
     doc = Document()
     section = doc.sections[0]
-    section.top_margin = Inches(0.65)
+    section.top_margin = Inches(0.35)
     section.bottom_margin = Inches(0.65)
     section.left_margin = Inches(0.75)
     section.right_margin = Inches(0.75)
@@ -333,14 +357,10 @@ def generate_docx(recipe: Dict[str, Any]) -> bytes:
     source_paragraph = doc.add_paragraph()
     add_kv(source_paragraph, "YouTube канал", source.get("youtube_channel") or "Unknown")
     if source.get("video_url"):
-        link_paragraph = doc.add_paragraph()
-        add_kv(link_paragraph, "Відео", source["video_url"])
+        if not _add_video_qr(doc, source["video_url"]):
+            link_paragraph = doc.add_paragraph()
+            add_kv(link_paragraph, "Відео", source["video_url"])
     transcription = _as_dict(recipe.get("transcription"))
-    if transcription.get("source"):
-        transcription_paragraph = doc.add_paragraph()
-        add_kv(transcription_paragraph, "Транскрипція", transcription.get("source"))
-        if transcription.get("language"):
-            transcription_paragraph.add_run(f" ({transcription['language']})")
     if transcription.get("warning"):
         warning = doc.add_paragraph()
         warning.add_run("Попередження транскрипції: ").bold = True
