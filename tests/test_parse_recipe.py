@@ -216,3 +216,39 @@ def test_extract_recipe_prefers_explicit_description_ingredients(monkeypatch):
     assert {"яйця", "молока", "курка", "печериці"}.issubset(names)
     assert result["category"] == "Другі страви"
     assert result["description"] == "Фарширована курка з млинцями."
+
+
+def test_extract_recipe_replaces_hallucinated_steps(monkeypatch):
+    monkeypatch.setattr(
+        parse_recipe,
+        "extract_recipe_ollama",
+        lambda _source_text, metadata: parse_recipe.normalize_recipe(
+            {
+                "title": "Курочка в печі з млинцями",
+                "category": "Другі страви",
+                "description": "Піца з куркою, млинцями, сиром та корейською морквою",
+                "ingredients": [{"name": "сир", "quantity": 100, "unit": "г"}],
+                "steps": [
+                    "Приготуйте млинці з молока, яєць, піску, солі, зелені та кислоти.",
+                    "Додайте сир та корейську моркву.",
+                ],
+            },
+            metadata,
+            None,
+            "ollama:test",
+        ),
+    )
+    monkeypatch.setattr(parse_recipe, "LLM_PROVIDER", "ollama")
+
+    result = parse_recipe.extract_recipe(
+        "Рецепт: Млинці: 4 яйця; 500 мл молока; 180 гр борошно. Курка до 2 кг; печериці 200 гр; морква по корейські 200 гр.",
+        {"title": "Курка з млинцями", "video_id": "2XlxQoXUJGE"},
+        {"source": "description_only", "language": "", "warning": "", "text": ""},
+    )
+
+    instructions = " ".join(step["instruction"].lower() for step in result["steps"])
+    assert result["title"] == "Курка з млинцями"
+    assert "сир" not in instructions
+    assert "піс" not in instructions
+    assert "кислот" not in instructions
+    assert "безпечну реконструкцію" in " ".join(result["warnings"])

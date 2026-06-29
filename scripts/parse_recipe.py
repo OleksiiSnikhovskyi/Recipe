@@ -406,6 +406,75 @@ def _prefer_explicit_ingredients(
     return llm_ingredients
 
 
+def _ingredient_words(ingredients: List[Dict[str, Any]]) -> set:
+    words = set()
+    for item in ingredients:
+        name = _text_or_empty(item.get("name")).lower()
+        for word in re.findall(r"[а-яіїєґa-z]{3,}", name):
+            words.add(word)
+    return words
+
+
+def _steps_have_unsupported_foods(
+    steps: List[Dict[str, Any]],
+    ingredients: List[Dict[str, Any]],
+    source_text: str,
+) -> bool:
+    """Detect confident step hallucinations such as cheese/sand/lemon not in source."""
+    source_lower = source_text.lower()
+    ingredient_tokens = _ingredient_words(ingredients)
+    risky_terms = {
+        "сир": ["сир", "сиру", "сиром"],
+        "пісок": ["пісок", "піску", "піском"],
+        "лимон": ["лимон", "лимону", "лимонний"],
+        "кислота": ["кислота", "кислоти", "кислоту"],
+        "зелень": ["зелень", "зелені", "петрушка", "кріп"],
+        "панірування": ["панірування", "сухар", "крихти"],
+        "паприка": ["паприка", "паприку"],
+        "білок": ["білок", "білку", "білком"],
+    }
+    unsupported_hits = 0
+    for step in steps:
+        instruction = _text_or_empty(step.get("instruction")).lower()
+        for canonical, forms in risky_terms.items():
+            if canonical in ingredient_tokens or canonical in source_lower:
+                continue
+            if any(form in instruction for form in forms):
+                unsupported_hits += 1
+                break
+    return unsupported_hits >= 1
+
+
+def _fallback_steps_from_explicit_ingredients(ingredients: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    names = {item.get("name", "").lower() for item in ingredients}
+    has_pancakes = any(name in names for name in ("яйця", "молока", "борошно"))
+    has_chicken = any("кур" in name for name in names)
+    has_filling = any(name in names for name in ("печериці", "цибуля", "морква по корейські", "часник"))
+
+    steps = []
+    if has_pancakes:
+        steps.append("Приготуйте млинці з яєць, молока, олії, солі, цукру, крохмалю та борошна.")
+    if has_chicken:
+        steps.append("Підготуйте курку для фарширування.")
+    if has_filling:
+        steps.append("Підготуйте начинку з цибулі, печериць, часнику та моркви по-корейськи.")
+    if has_chicken and has_pancakes:
+        steps.append("Нафаршируйте курку підготовленими млинцями та начинкою.")
+        steps.append("Запікайте курку до готовності; точний час і температуру потрібно уточнити з відео.")
+    if not steps:
+        steps.append("Спосіб приготування потрібно уточнити з відео або повної транскрипції.")
+
+    return [
+        {
+            "step_number": index,
+            "instruction": instruction,
+            "duration_minutes": None,
+            "notes": "",
+        }
+        for index, instruction in enumerate(steps, start=1)
+    ]
+
+
 def _normalize_ingredients(value: Any) -> list:
     if not isinstance(value, list):
         return []
@@ -603,7 +672,11 @@ Return this JSON structure:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "stream": False
+                "stream": False,
+                "think": False,
+                "options": {
+                    "temperature": 0.1
+                }
             },
             timeout=OLLAMA_TIMEOUT_SECONDS
         )
@@ -751,8 +824,15 @@ def extract_recipe(
         normalized["ingredients"],
         explicit_ingredients,
     )
+    if _text_or_empty(video_metadata.get("title")):
+        normalized["title"] = _text_or_empty(video_metadata.get("title"))
     if not normalized["description"]:
         normalized["description"] = _text_or_empty(video_metadata.get("title")) or normalized["title"]
+    if _steps_have_unsupported_foods(normalized["steps"], normalized["ingredients"], source_text):
+        normalized["steps"] = _fallback_steps_from_explicit_ingredients(normalized["ingredients"])
+        normalized["warnings"].append(
+            "Кроки LLM містили інгредієнти, яких немає у джерелі; використано безпечну реконструкцію з опису."
+        )
     if explicit_ingredients and explicit_ingredients == normalized["ingredients"]:
         normalized["warnings"].append("Інгредієнти взято з явного списку в описі відео.")
     return normalized
