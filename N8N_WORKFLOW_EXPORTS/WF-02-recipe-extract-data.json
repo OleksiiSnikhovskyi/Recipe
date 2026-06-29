@@ -59,7 +59,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { ok: true, recipe_id: $json.recipe_id, video_id: $json.video_id, title: $json.title, docx_url: $json.docx_url, pdf_url: $json.pdf_url, telegram_notified: true } }}",
+        "responseBody": "={{ { ok: true, recipe_id: $('Call WF-05 (Upload Nextcloud)').item.json.recipe_id, video_id: $('Call WF-05 (Upload Nextcloud)').item.json.video_id, title: $('Call WF-05 (Upload Nextcloud)').item.json.title, nextcloud_docx_url: $('Call WF-05 (Upload Nextcloud)').item.json.nextcloud_docx_url, nextcloud_pdf_url: $('Call WF-05 (Upload Nextcloud)').item.json.nextcloud_pdf_url, telegram_notified: true } }}",
         "options": {}
       },
       "id": "response_success",
@@ -121,20 +121,24 @@
     },
     {
       "parameters": {
-        "url": "https://n8n.csc-ua.tech/webhook/recipe-telegram",
-        "method": "POST",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { recipe_id: $json.recipe_id, video_id: $json.video_id, nextcloud_docx_url: $json.nextcloud_docx_url, nextcloud_pdf_url: $json.nextcloud_pdf_url } }}",
-        "options": { "timeout": 120000 }
+        "operation": "sendMessage",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=✅ Новий рецепт оброблено\n\nНазва: {{ $json.title || 'Невідомий рецепт' }}\nКатегорія: {{ $json.category || 'Інше' }}\n\n📄 DOCX: {{ $json.nextcloud_docx_url || 'посилання ще не створено' }}\n📊 PDF: {{ $json.nextcloud_pdf_url || 'посилання ще не створено' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
       },
-      "id": "http_notify_telegram",
-      "name": "Call WF-06 (Telegram Notify)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1920, 300]
+      "id": "telegram_send_message",
+      "name": "Send Telegram Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1920, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "15FBWslyV5AvsHZc",
+          "name": "Telegram Recipe_Oleksii_bot"
+        }
+      }
     }
   ],
   "connections": {
@@ -144,8 +148,8 @@
     "Save Recipe and Transcript": { "main": [[{ "node": "Call WF-03 (Generate DOCX)", "type": "main", "index": 0 }]] },
     "Call WF-03 (Generate DOCX)": { "main": [[{ "node": "Call WF-04 (Convert PDF)", "type": "main", "index": 0 }]] },
     "Call WF-04 (Convert PDF)": { "main": [[{ "node": "Call WF-05 (Upload Nextcloud)", "type": "main", "index": 0 }]] },
-    "Call WF-05 (Upload Nextcloud)": { "main": [[{ "node": "Call WF-06 (Telegram Notify)", "type": "main", "index": 0 }]] },
-    "Call WF-06 (Telegram Notify)": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
+    "Call WF-05 (Upload Nextcloud)": { "main": [[{ "node": "Send Telegram Notification", "type": "main", "index": 0 }]] },
+    "Send Telegram Notification": { "main": [[{ "node": "Respond After Completion", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
