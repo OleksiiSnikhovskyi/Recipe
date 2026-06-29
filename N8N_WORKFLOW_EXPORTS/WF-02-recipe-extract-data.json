@@ -70,7 +70,7 @@
     },
     {
       "parameters": {
-        "url": "https://n8n.csc-ua.tech/webhook/recipe-docx",
+        "url": "http://172.18.0.1:5011/generate",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
@@ -87,7 +87,7 @@
     },
     {
       "parameters": {
-        "url": "https://n8n.csc-ua.tech/webhook/recipe-pdf",
+        "url": "http://172.18.0.1:5012/convert",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
