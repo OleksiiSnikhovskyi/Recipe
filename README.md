@@ -15,6 +15,7 @@
 - `WF-05` зберігає DOCX/PDF у Nextcloud у `/Documents/Recipe/{Категорія}`.
 - `WF-02` надсилає Telegram notification після успішного збереження.
 - `WF-07` дає Telegram-пошук по збережених рецептах із вибором за номером.
+- `WF-08` робить повний backfill усіх відео з playlist через YouTube pagination.
 
 ## Архітектура
 
@@ -52,7 +53,7 @@ Telegram message
 | `generate_docx.py` `:5011` | formatted DOCX with image and QR code | Working |
 | `pdf_converter.py` `:5012` | LibreOffice PDF conversion | Working |
 | `nextcloud_uploader.py` `:5013` | payload for native Nextcloud workflow | Working |
-| n8n WF-01..WF-07 | orchestration | Working |
+| n8n WF-01..WF-08 | orchestration | Working |
 | Telegram bot | notifications and search | Working |
 
 ## Швидке Користування
@@ -66,6 +67,16 @@ docker exec -d n8n-docker_n8n_1 n8n execute --id 9QXzE48DP7rcZ0ft
 ```
 
 WF-01 обробляє всі нові відео з поточної сторінки YouTube API `maxResults=50`. Уже завершені рецепти не дублюються.
+
+### Запустити повний backfill 700+ відео
+
+На Markiz:
+
+```bash
+docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+```
+
+`WF-08` проходить усі сторінки YouTube API через `nextPageToken`, а потім обробляє відео по одному. Після deploy точний ID буде виведено `scripts/deploy_recipe_workflows.py`.
 
 ### Перевірити сервіси
 

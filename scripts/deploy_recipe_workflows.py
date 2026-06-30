@@ -27,6 +27,7 @@ DEPLOY_ORDER = [
     "WF-05-recipe-upload-nextcloud.json",
     "WF-06-recipe-telegram-notify.json",
     "WF-07-recipe-search-telegram.json",
+    "WF-08-recipe-backfill-all-playlist.json",
 ]
 
 

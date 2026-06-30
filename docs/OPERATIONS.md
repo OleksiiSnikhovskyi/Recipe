@@ -67,6 +67,7 @@ nohup python scripts/nextcloud_uploader.py --server --port 5013 > logs/nextcloud
 | `WF-05` | Native Nextcloud upload workflow | Production webhook `/recipe-nextcloud` |
 | `WF-06` | Legacy Telegram notify/log workflow | No longer critical in main chain |
 | `WF-07` | Telegram recipe search bot | Search + numbered selection |
+| `WF-08` | Full playlist backfill | Manual admin workflow, all pages |
 
 Deploy workflows:
 
@@ -114,6 +115,42 @@ docker exec -it n8n-docker_n8n_1 n8n execute --id=9QXzE48DP7rcZ0ft
 - Уже завершені відео пропускаються.
 - Нові або retryable failed/stale записи запускають WF-02.
 - Помилка одного відео не має зупиняти весь список.
+
+## 5.1. Full Backfill: All Playlist Recipes
+
+YouTube API повертає максимум 50 playlist items за один запит. Для playlist із 700+ відео використовуй `WF-08-recipe Backfill All Playlist`.
+
+Deploy:
+
+```bash
+cd /opt/recipe-automation
+source venv/bin/activate
+python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
+```
+
+Запам'ятай workflow ID із виводу deploy.
+
+Run:
+
+```bash
+docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+```
+
+Interactive run:
+
+```bash
+docker exec -it n8n-docker_n8n_1 n8n execute --id=4mdyTlugsBwpBtW0
+```
+
+WF-08:
+
+- проходить усі сторінки YouTube API через `nextPageToken`;
+- збирає всі відео в один список;
+- обробляє строго по одному;
+- пропускає повністю завершені рецепти;
+- повторно обробляє `failed`, stale `processing`, а також записи, де `video_log=completed`, але `recipes.processed=false` або відсутні Nextcloud links.
+
+Цей запуск може тривати багато годин або довше, залежно від кількості нових відео, транскрипції та швидкості LLM.
 
 ## 6. Monitoring
 

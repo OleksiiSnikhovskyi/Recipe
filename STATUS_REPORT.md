@@ -25,6 +25,7 @@
   - `WF-05` native Nextcloud upload.
   - `WF-06` legacy Telegram notify/log.
   - `WF-07` Telegram recipe search.
+  - `WF-08` full playlist backfill through YouTube pagination.
 - Telegram bot:
   - New recipe notifications.
   - Search by text.
@@ -41,6 +42,7 @@
 | `WF-02` | `BWXYVoSggcCS2xX6` | Extract and process recipe |
 | `WF-05` | `BlhGzvMRKvml1s1k` | Upload to Nextcloud |
 | `WF-07` | `k9A9VLRcUuU9zFBJ` | Telegram recipe search |
+| `WF-08` | `4mdyTlugsBwpBtW0` | Full playlist backfill |
 
 ## One-Time Action Requested
 
@@ -52,6 +54,14 @@ docker exec -d n8n-docker_n8n_1 n8n execute --id 9QXzE48DP7rcZ0ft
 ```
 
 This does not duplicate already completed recipes. It claims new videos through `video_log` and processes them one by one.
+
+For all 700+ playlist recipes, deploy and run `WF-08-recipe-backfill-all-playlist.json` instead:
+
+```bash
+cd /opt/recipe-automation
+python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
+docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+```
 
 ## Verify Progress
 

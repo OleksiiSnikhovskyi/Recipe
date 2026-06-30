@@ -72,6 +72,30 @@ docker exec -d n8n-docker_n8n_1 n8n execute --id 9QXzE48DP7rcZ0ft
 
 WF-01 бере останні 50 відео з playlist і обробляє тільки ті, яких ще немає як completed.
 
+## 6.1. Full Backfill Усіх Рецептів
+
+Якщо в playlist більше 50 відео, використовуй `WF-08-recipe Backfill All Playlist`. Він сам проходить YouTube pagination через `nextPageToken`.
+
+Після deploy знайди ID workflow у виводі:
+
+```bash
+python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
+```
+
+Запуск:
+
+```bash
+docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+```
+
+Для інтерактивного запуску з логом:
+
+```bash
+docker exec -it n8n-docker_n8n_1 n8n execute --id=4mdyTlugsBwpBtW0
+```
+
+WF-08 може працювати дуже довго, бо обробляє відео строго по одному.
+
 ## 7. Моніторинг
 
 ```bash

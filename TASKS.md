@@ -7,6 +7,7 @@
 - Phase: `Production backfill and usage`
 - Database: `recipe_db` on Markiz is created and initialized
 - n8n: `WF-01` through `WF-07` are deployed
+- Backfill: `WF-08` export is prepared for full playlist pagination
 - Python services: `5010` through `5013` are implemented and tested
 - Nextcloud: files are stored under `/Documents/Recipe/{category}`
 - Telegram: notifications and recipe search are working
@@ -41,10 +42,12 @@
 - [x] Add `WF-07` Telegram recipe search workflow with numbered result selection
 - [x] Verify Telegram search works
 - [x] Update usage and operations documentation
+- [x] Add `WF-08` full playlist backfill workflow export
 
 ## In Progress
 
-- [ ] Run one-time WF-01 backfill for newest 50 playlist recipes
+- [ ] Deploy `WF-08-recipe-backfill-all-playlist.json`
+- [ ] Run one-time WF-08 backfill for all playlist recipes
 - [ ] Monitor Python logs and n8n executions during backfill
 - [ ] Confirm counts in `recipes`, `video_log`, and Nextcloud links
 
@@ -61,7 +64,7 @@
 
 ## Backfill Command
 
-Run on Markiz:
+Run newest 50 on Markiz:
 
 ```bash
 cd /opt/recipe-automation
@@ -69,6 +72,14 @@ docker exec -d n8n-docker_n8n_1 n8n execute --id 9QXzE48DP7rcZ0ft
 ```
 
 WF-01 processes the newest 50 playlist videos sequentially. Already completed recipes are skipped.
+
+Run all playlist videos after deploying WF-08:
+
+```bash
+cd /opt/recipe-automation
+python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
+docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+```
 
 ## Monitoring Commands
 
