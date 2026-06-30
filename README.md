@@ -73,10 +73,10 @@ WF-01 обробляє всі нові відео з поточної сторі
 На Markiz:
 
 ```bash
-docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 ```
 
-`WF-08` проходить усі сторінки YouTube API через `nextPageToken`, а потім обробляє відео по одному. Після deploy точний ID буде виведено `scripts/deploy_recipe_workflows.py`.
+`WF-08` має бути активним у n8n. Він проходить усі сторінки YouTube API через `nextPageToken`, а потім обробляє відео по одному. Після deploy точний ID буде виведено `scripts/deploy_recipe_workflows.py`.
 
 ### Перевірити сервіси
 

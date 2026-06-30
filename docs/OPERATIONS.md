@@ -130,16 +130,10 @@ python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playl
 
 Запам'ятай workflow ID із виводу deploy.
 
-Run:
+Activate `WF-08` in n8n UI, then run the production webhook:
 
 ```bash
-docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
-```
-
-Interactive run:
-
-```bash
-docker exec -it n8n-docker_n8n_1 n8n execute --id=4mdyTlugsBwpBtW0
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 ```
 
 WF-08:

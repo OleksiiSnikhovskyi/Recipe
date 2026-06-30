@@ -82,16 +82,10 @@ WF-01 бере останні 50 відео з playlist і обробляє ті
 python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
 ```
 
-Запуск:
+Активуй `WF-08` у n8n UI, потім запусти production webhook:
 
 ```bash
-docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
-```
-
-Для інтерактивного запуску з логом:
-
-```bash
-docker exec -it n8n-docker_n8n_1 n8n execute --id=4mdyTlugsBwpBtW0
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 ```
 
 WF-08 може працювати дуже довго, бо обробляє відео строго по одному.

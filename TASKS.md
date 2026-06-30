@@ -78,7 +78,7 @@ Run all playlist videos after deploying WF-08:
 ```bash
 cd /opt/recipe-automation
 python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
-docker exec -d n8n-docker_n8n_1 n8n execute --id 4mdyTlugsBwpBtW0
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 ```
 
 ## Monitoring Commands

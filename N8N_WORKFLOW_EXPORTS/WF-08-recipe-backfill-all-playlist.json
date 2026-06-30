@@ -14,7 +14,23 @@
     },
     {
       "parameters": {
-        "jsCode": "const apiKey = '__YOUTUBE_API_KEY__';\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst maxPages = 100;\nconst pageSize = 50;\nconst allVideos = [];\nlet pageToken = '';\nlet pageCount = 0;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nwhile (pageCount < maxPages) {\n  const pageTokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';\n  const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${encodeURIComponent(apiKey)}&playlistId=${encodeURIComponent(playlistId)}&part=snippet&maxResults=${pageSize}${pageTokenPart}`;\n  const response = await $helpers.httpRequest({ method: 'GET', url, json: true });\n  const items = Array.isArray(response.items) ? response.items : [];\n\n  for (const entry of items) {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) continue;\n\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;\n    const normalized = {\n      video_id: String(videoId),\n      playlist_id: playlistId,\n      title: String(snippet.title || ''),\n      description: String(snippet.description || ''),\n      thumbnail,\n      youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n      published_at: String(snippet.publishedAt || ''),\n      video_url: videoUrl,\n      backfill_page: pageCount + 1\n    };\n\n    allVideos.push({\n      json: {\n        ...normalized,\n        sql_video_id: sqlQuote(normalized.video_id),\n        sql_playlist_id: sqlQuote(normalized.playlist_id),\n        sql_title: sqlQuote(normalized.title),\n        sql_description: sqlQuote(normalized.description),\n        sql_thumbnail: sqlQuote(normalized.thumbnail),\n        sql_youtube_channel: sqlQuote(normalized.youtube_channel),\n        sql_published_at: sqlQuote(normalized.published_at),\n        sql_video_url: sqlQuote(normalized.video_url)\n      }\n    });\n  }\n\n  pageCount += 1;\n  pageToken = response.nextPageToken || '';\n  if (!pageToken) break;\n}\n\nreturn allVideos;"
+        "httpMethod": "POST",
+        "path": "recipe-backfill-all",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook_backfill_trigger",
+      "name": "Webhook Backfill Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        160,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const apiKey = '__YOUTUBE_API_KEY__';\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst maxPages = 100;\nconst pageSize = 50;\nconst allVideos = [];\nlet pageToken = '';\nlet pageCount = 0;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nwhile (pageCount < maxPages) {\n  const pageTokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';\n  const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${encodeURIComponent(apiKey)}&playlistId=${encodeURIComponent(playlistId)}&part=snippet&maxResults=${pageSize}${pageTokenPart}`;\n  const httpResponse = await fetch(url, { method: 'GET' });\n  if (!httpResponse.ok) {\n    const body = await httpResponse.text();\n    throw new Error(`YouTube playlist fetch failed: ${httpResponse.status} ${body}`);\n  }\n  const response = await httpResponse.json();\n  const items = Array.isArray(response.items) ? response.items : [];\n\n  for (const entry of items) {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) continue;\n\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;\n    const normalized = {\n      video_id: String(videoId),\n      playlist_id: playlistId,\n      title: String(snippet.title || ''),\n      description: String(snippet.description || ''),\n      thumbnail,\n      youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n      published_at: String(snippet.publishedAt || ''),\n      video_url: videoUrl,\n      backfill_page: pageCount + 1\n    };\n\n    allVideos.push({\n      json: {\n        ...normalized,\n        sql_video_id: sqlQuote(normalized.video_id),\n        sql_playlist_id: sqlQuote(normalized.playlist_id),\n        sql_title: sqlQuote(normalized.title),\n        sql_description: sqlQuote(normalized.description),\n        sql_thumbnail: sqlQuote(normalized.thumbnail),\n        sql_youtube_channel: sqlQuote(normalized.youtube_channel),\n        sql_published_at: sqlQuote(normalized.published_at),\n        sql_video_url: sqlQuote(normalized.video_url)\n      }\n    });\n  }\n\n  pageCount += 1;\n  pageToken = response.nextPageToken || '';\n  if (!pageToken) break;\n}\n\nreturn allVideos;"
       },
       "id": "fetch_all_playlist_pages",
       "name": "Fetch All Playlist Pages",
@@ -203,6 +219,17 @@
   ],
   "connections": {
     "Manual Backfill Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch All Playlist Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Backfill Trigger": {
       "main": [
         [
           {
