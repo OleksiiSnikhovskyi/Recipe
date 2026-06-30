@@ -1,0 +1,147 @@
+{
+  "name": "WF-07-recipe Search Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "telegram_trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        320
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "15FBWslyV5AvsHZc",
+          "name": "Telegram Recipe_Oleksii_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message || {};\nconst chatId = msg.chat?.id ? String(msg.chat.id) : '';\nconst rawText = String(msg.text || msg.caption || '').trim();\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction sqlInt(value) {\n  const parsed = Number.parseInt(value, 10);\n  return Number.isFinite(parsed) ? String(parsed) : 'NULL';\n}\n\nfunction cleanQuery(text) {\n  return text\n    .replace(/^\\/search(?:@\\w+)?\\s*/i, '')\n    .replace(/^пошук\\s*:?\\s*/i, '')\n    .trim();\n}\n\nconst helpSql = `SELECT\n  'help'::text AS response_type,\n  ${sqlQuote(chatId)}::text AS chat_id,\n  NULL::text AS query,\n  NULL::integer AS result_number,\n  0::integer AS result_count,\n  '[]'::jsonb AS results,\n  NULL::jsonb AS recipe;`;\n\nlet route = 'help';\nlet query = cleanQuery(rawText);\nlet resultNumber = null;\nlet recipeId = null;\nlet searchSql = helpSql;\n\nconst listNumberMatch = rawText.match(/^#?(\\d{1,2})$/);\nconst recipeIdMatch = rawText.match(/^\\/recipe(?:@\\w+)?\\s+(\\d+)$/i);\nconst isHelp = !rawText || /^\\/(start|help)(?:@\\w+)?$/i.test(rawText) || /^допомога$/i.test(rawText);\n\nif (!chatId) {\n  route = 'error';\n  searchSql = `SELECT 'error'::text AS response_type, ''::text AS chat_id, NULL::text AS query, NULL::integer AS result_number, 0::integer AS result_count, '[]'::jsonb AS results, jsonb_build_object('message', 'Не вдалося визначити chat_id.') AS recipe;`;\n} else if (isHelp) {\n  route = 'help';\n  searchSql = helpSql;\n} else if (recipeIdMatch) {\n  route = 'recipe_id';\n  recipeId = Number.parseInt(recipeIdMatch[1], 10);\n  searchSql = `WITH selected AS (\n  SELECT id, title, category, description, youtube_url, youtube_channel, nextcloud_docx_url, nextcloud_pdf_url, updated_at\n  FROM recipes\n  WHERE id = ${sqlInt(recipeId)}\n  LIMIT 1\n)\nSELECT\n  'recipe_id'::text AS response_type,\n  ${sqlQuote(chatId)}::text AS chat_id,\n  NULL::text AS query,\n  NULL::integer AS result_number,\n  COUNT(selected.id)::integer AS result_count,\n  '[]'::jsonb AS results,\n  CASE WHEN COUNT(selected.id) = 0 THEN NULL ELSE jsonb_build_object(\n    'id', MAX(selected.id),\n    'title', MAX(selected.title),\n    'category', MAX(selected.category),\n    'description', MAX(selected.description),\n    'youtube_url', MAX(selected.youtube_url),\n    'youtube_channel', MAX(selected.youtube_channel),\n    'docx_url', MAX(selected.nextcloud_docx_url),\n    'pdf_url', MAX(selected.nextcloud_pdf_url),\n    'updated_at', MAX(selected.updated_at)::text\n  ) END AS recipe\nFROM selected;`;\n} else if (listNumberMatch) {\n  route = 'select';\n  resultNumber = Number.parseInt(listNumberMatch[1], 10);\n  searchSql = `WITH selected_session AS (\n  SELECT recipe_id, query, result_number, created_at\n  FROM telegram_search_sessions\n  WHERE chat_id = ${sqlQuote(chatId)}\n    AND result_number = ${sqlInt(resultNumber)}\n    AND created_at > NOW() - INTERVAL '6 hours'\n  ORDER BY created_at DESC\n  LIMIT 1\n), selected AS (\n  SELECT r.id, r.title, r.category, r.description, r.youtube_url, r.youtube_channel,\n         r.nextcloud_docx_url, r.nextcloud_pdf_url, r.updated_at,\n         s.query, s.result_number\n  FROM selected_session s\n  JOIN recipes r ON r.id = s.recipe_id\n)\nSELECT\n  'select'::text AS response_type,\n  ${sqlQuote(chatId)}::text AS chat_id,\n  MAX(selected.query)::text AS query,\n  ${sqlInt(resultNumber)}::integer AS result_number,\n  COUNT(selected.id)::integer AS result_count,\n  '[]'::jsonb AS results,\n  CASE WHEN COUNT(selected.id) = 0 THEN NULL ELSE jsonb_build_object(\n    'id', MAX(selected.id),\n    'number', MAX(selected.result_number),\n    'title', MAX(selected.title),\n    'category', MAX(selected.category),\n    'description', MAX(selected.description),\n    'youtube_url', MAX(selected.youtube_url),\n    'youtube_channel', MAX(selected.youtube_channel),\n    'docx_url', MAX(selected.nextcloud_docx_url),\n    'pdf_url', MAX(selected.nextcloud_pdf_url),\n    'updated_at', MAX(selected.updated_at)::text\n  ) END AS recipe\nFROM selected;`;\n} else if (query.length >= 2) {\n  route = 'search';\n  const querySql = sqlQuote(query.toLowerCase());\n  const patternSql = sqlQuote(`%${query.toLowerCase()}%`);\n  searchSql = `WITH input AS (\n  SELECT ${sqlQuote(chatId)}::text AS chat_id,\n         ${querySql}::text AS query,\n         ${patternSql}::text AS pattern\n), ranked AS (\n  SELECT\n    r.id,\n    r.title,\n    r.category,\n    r.youtube_url,\n    r.youtube_channel,\n    r.nextcloud_docx_url,\n    r.nextcloud_pdf_url,\n    r.updated_at,\n    GREATEST(\n      similarity(lower(r.title), input.query),\n      similarity(lower(COALESCE(r.category, '')), input.query),\n      similarity(lower(COALESCE(r.description, '')), input.query),\n      similarity(lower(COALESCE(r.ingredients::text, '')), input.query)\n    ) AS similarity_score,\n    (CASE WHEN lower(r.title) LIKE input.pattern THEN 8 ELSE 0 END) +\n    (CASE WHEN lower(COALESCE(r.category, '')) LIKE input.pattern THEN 4 ELSE 0 END) +\n    (CASE WHEN lower(COALESCE(r.ingredients::text, '')) LIKE input.pattern THEN 3 ELSE 0 END) +\n    (CASE WHEN lower(COALESCE(r.description, '')) LIKE input.pattern THEN 1 ELSE 0 END) AS hit_score\n  FROM recipes r\n  CROSS JOIN input\n  WHERE r.processed = TRUE\n    AND (r.nextcloud_pdf_url IS NOT NULL OR r.nextcloud_docx_url IS NOT NULL)\n    AND (\n      lower(r.title) LIKE input.pattern\n      OR lower(COALESCE(r.category, '')) LIKE input.pattern\n      OR lower(COALESCE(r.description, '')) LIKE input.pattern\n      OR lower(COALESCE(r.ingredients::text, '')) LIKE input.pattern\n      OR similarity(lower(r.title), input.query) > 0.18\n      OR similarity(lower(COALESCE(r.description, '')), input.query) > 0.18\n    )\n), numbered AS (\n  SELECT ROW_NUMBER() OVER (ORDER BY hit_score DESC, similarity_score DESC, updated_at DESC, id DESC)::integer AS result_number,\n         id, title, category, youtube_url, youtube_channel, nextcloud_docx_url, nextcloud_pdf_url, updated_at,\n         similarity_score, hit_score\n  FROM ranked\n  ORDER BY hit_score DESC, similarity_score DESC, updated_at DESC, id DESC\n  LIMIT 10\n), cleared AS (\n  DELETE FROM telegram_search_sessions\n  WHERE chat_id = (SELECT chat_id FROM input)\n     OR created_at < NOW() - INTERVAL '6 hours'\n), inserted AS (\n  INSERT INTO telegram_search_sessions (chat_id, result_number, recipe_id, query, created_at)\n  SELECT (SELECT chat_id FROM input), result_number, id, (SELECT query FROM input), NOW()\n  FROM numbered\n  RETURNING recipe_id\n)\nSELECT\n  'search'::text AS response_type,\n  input.chat_id,\n  input.query,\n  NULL::integer AS result_number,\n  COUNT(numbered.id)::integer AS result_count,\n  COALESCE(jsonb_agg(jsonb_build_object(\n    'number', numbered.result_number,\n    'id', numbered.id,\n    'title', numbered.title,\n    'category', numbered.category,\n    'youtube_channel', numbered.youtube_channel,\n    'youtube_url', numbered.youtube_url,\n    'docx_url', numbered.nextcloud_docx_url,\n    'pdf_url', numbered.nextcloud_pdf_url\n  ) ORDER BY numbered.result_number) FILTER (WHERE numbered.id IS NOT NULL), '[]'::jsonb) AS results,\n  NULL::jsonb AS recipe\nFROM input\nLEFT JOIN numbered ON TRUE\nGROUP BY input.chat_id, input.query;`;\n} else {\n  route = 'help';\n  searchSql = helpSql;\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    text: rawText,\n    query,\n    route,\n    result_number: resultNumber,\n    recipe_id: recipeId,\n    search_sql: searchSql\n  }\n}];"
+      },
+      "id": "prepare_search_sql",
+      "name": "Prepare Search SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.search_sql }}",
+        "additionalFields": {}
+      },
+      "id": "run_recipe_search",
+      "name": "Run Recipe Search",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        700,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "MHjN5hbuya1gKM8g",
+          "name": "Postgres_Recipe"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json || {};\n\nfunction parseJson(value, fallback) {\n  if (value === null || value === undefined) return fallback;\n  if (typeof value === 'string') {\n    try {\n      return JSON.parse(value);\n    } catch (error) {\n      return fallback;\n    }\n  }\n  return value;\n}\n\nfunction compact(value, fallback = 'не вказано') {\n  const text = String(value || '').trim();\n  return text || fallback;\n}\n\nfunction lineUrl(label, url) {\n  const clean = String(url || '').trim();\n  return clean ? `${label}: ${clean}` : '';\n}\n\nfunction shortDescription(value) {\n  const text = String(value || '').replace(/\\s+/g, ' ').trim();\n  if (!text) return '';\n  return text.length > 260 ? `${text.slice(0, 257)}...` : text;\n}\n\nconst responseType = row.response_type || 'help';\nconst chatId = String(row.chat_id || '');\nconst results = parseJson(row.results, []);\nconst recipe = parseJson(row.recipe, null);\nlet message = '';\n\nif (responseType === 'search') {\n  const query = compact(row.query, '');\n  if (!Array.isArray(results) || results.length === 0) {\n    message = `За запитом \"${query}\" нічого не знайшла.\\n\\nСпробуй інші слова: наприклад, \"курка\", \"млинці\", \"десерт\", \"салат\".`;\n  } else {\n    const lines = results.map((item) => {\n      const header = `${item.number}. ${compact(item.title)} (${compact(item.category, 'Інше')})`;\n      const links = [lineUrl('PDF', item.pdf_url), lineUrl('DOCX', item.docx_url)].filter(Boolean).join('\\n');\n      return `${header}\\n${links}`;\n    });\n    message = `Знайшла ${results.length} рецепт(ів) за запитом \"${query}\".\\n\\n${lines.join('\\n\\n')}\\n\\nНапиши номер зі списку, наприклад: 1. Також можна відкрити пряме посилання PDF/DOCX.`;\n  }\n} else if (responseType === 'select' || responseType === 'recipe_id') {\n  if (!recipe) {\n    message = responseType === 'select'\n      ? 'Не знайшла рецепт за цим номером. Список міг застаріти, зроби пошук ще раз.'\n      : 'Не знайшла рецепт з таким ID.';\n  } else {\n    const parts = [\n      `${compact(recipe.title)}`,\n      `Категорія: ${compact(recipe.category, 'Інше')}`,\n      `Канал: ${compact(recipe.youtube_channel)}`,\n      shortDescription(recipe.description),\n      lineUrl('PDF', recipe.pdf_url),\n      lineUrl('DOCX', recipe.docx_url),\n      lineUrl('YouTube', recipe.youtube_url),\n      `ID рецепта: ${recipe.id}`\n    ].filter(Boolean);\n    message = parts.join('\\n\\n');\n  }\n} else if (responseType === 'error') {\n  message = recipe?.message || 'Сталася помилка під час обробки повідомлення.';\n} else {\n  message = 'Пошук рецептів готовий.\\n\\nНапиши, що шукаємо, наприклад:\\nкурка з млинцями\\nдесерт\\nпечериці\\n\\nПісля списку результатів напиши номер, наприклад: 1.\\nТакож можна відкрити рецепт напряму командою /recipe 35.';\n}\n\nreturn [{ json: { chat_id: chatId, text: message } }];"
+      },
+      "id": "format_telegram_reply",
+      "name": "Format Telegram Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "send_telegram_reply",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1240,
+        320
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "15FBWslyV5AvsHZc",
+          "name": "Telegram Recipe_Oleksii_bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search SQL": {
+      "main": [
+        [
+          {
+            "node": "Run Recipe Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Recipe Search": {
+      "main": [
+        [
+          {
+            "node": "Format Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Telegram Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "description": "Telegram recipe search bot: text query returns a numbered list, number replies open the selected recipe from recent search results."
+}

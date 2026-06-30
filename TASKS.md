@@ -44,6 +44,8 @@
 - [ ] Implement upload/share logic for `nextcloud_uploader.py`
 - [ ] Implement nutrition calculation logic for `nutrition_calculator.py`
 - [ ] Test workflow chain from `WF-02` through `WF-06`
+- [x] Add `WF-07` Telegram recipe search workflow with numbered result selection
+- [x] Add migration `003_recipe_search_sessions.sql` for fuzzy search indexes and Telegram search sessions
 
 ### Immediate Next Steps
 - [x] Relink PostgreSQL nodes to `Postgres_Recipe`
@@ -55,6 +57,8 @@
   - [ ] `nutrition_calculator.py`
 - [ ] Run an isolated webhook test for `WF-02`
 - [ ] Perform first end-to-end dry run with a sample video payload
+- [ ] Apply `003_recipe_search_sessions.sql` on Markiz
+- [ ] Deploy and activate `WF-07-recipe-search-telegram.json`
 
 ## Blockers & Risks
 
