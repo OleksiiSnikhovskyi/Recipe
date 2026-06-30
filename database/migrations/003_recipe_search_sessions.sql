@@ -32,4 +32,10 @@ CREATE INDEX IF NOT EXISTS idx_recipes_description_trgm
 CREATE INDEX IF NOT EXISTS idx_recipes_ingredients_trgm
     ON recipes USING gin ((lower(COALESCE(ingredients::text, ''))) gin_trgm_ops);
 
+ALTER TABLE telegram_search_sessions OWNER TO recipe_user;
+ALTER SEQUENCE telegram_search_sessions_id_seq OWNER TO recipe_user;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE telegram_search_sessions TO recipe_user;
+GRANT USAGE, SELECT ON SEQUENCE telegram_search_sessions_id_seq TO recipe_user;
+
 COMMIT;
