@@ -139,6 +139,7 @@ curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 WF-08:
 
 - проходить усі сторінки YouTube API через `nextPageToken`;
+- запускає кожну наступну сторінку окремим webhook execution, щоб не тримати нестабільний cross-page loop в одному n8n execution;
 - збирає всі відео в один список;
 - обробляє строго по одному;
 - пропускає повністю завершені рецепти;

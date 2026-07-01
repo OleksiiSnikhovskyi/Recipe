@@ -89,6 +89,7 @@ curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
 ```
 
 WF-08 може працювати дуже довго, бо обробляє відео строго по одному.
+Кожна наступна сторінка playlist запускається окремим execution через webhook, тому в n8n буде серія execution, а не один гігантський запуск.
 
 ## 7. Моніторинг
 

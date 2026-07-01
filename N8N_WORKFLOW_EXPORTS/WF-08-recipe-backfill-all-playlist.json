@@ -7,10 +7,7 @@
       "name": "Manual Backfill Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [
-        160,
-        320
-      ]
+      "position": [120, 300]
     },
     {
       "parameters": {
@@ -23,79 +20,77 @@
       "name": "Webhook Backfill Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        160,
-        520
-      ]
+      "position": [120, 500]
     },
     {
       "parameters": {
-        "jsCode": "const apiKey = '__YOUTUBE_API_KEY__';\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst maxPages = 100;\nconst pageSize = 50;\nconst allVideos = [];\nlet pageToken = '';\nlet pageCount = 0;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nwhile (pageCount < maxPages) {\n  const pageTokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';\n  const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${encodeURIComponent(apiKey)}&playlistId=${encodeURIComponent(playlistId)}&part=snippet&maxResults=${pageSize}${pageTokenPart}`;\n  const httpResponse = await fetch(url, { method: 'GET' });\n  if (!httpResponse.ok) {\n    const body = await httpResponse.text();\n    throw new Error(`YouTube playlist fetch failed: ${httpResponse.status} ${body}`);\n  }\n  const response = await httpResponse.json();\n  const items = Array.isArray(response.items) ? response.items : [];\n\n  for (const entry of items) {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) continue;\n\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;\n    const normalized = {\n      video_id: String(videoId),\n      playlist_id: playlistId,\n      title: String(snippet.title || ''),\n      description: String(snippet.description || ''),\n      thumbnail,\n      youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n      published_at: String(snippet.publishedAt || ''),\n      video_url: videoUrl,\n      backfill_page: pageCount + 1\n    };\n\n    allVideos.push({\n      json: {\n        ...normalized,\n        sql_video_id: sqlQuote(normalized.video_id),\n        sql_playlist_id: sqlQuote(normalized.playlist_id),\n        sql_title: sqlQuote(normalized.title),\n        sql_description: sqlQuote(normalized.description),\n        sql_thumbnail: sqlQuote(normalized.thumbnail),\n        sql_youtube_channel: sqlQuote(normalized.youtube_channel),\n        sql_published_at: sqlQuote(normalized.published_at),\n        sql_video_url: sqlQuote(normalized.video_url)\n      }\n    });\n  }\n\n  pageCount += 1;\n  pageToken = response.nextPageToken || '';\n  if (!pageToken) break;\n}\n\nreturn allVideos;"
+        "jsCode": "const input = $input.first()?.json || {};\nconst body = input.body || {};\nconst pageToken = body.page_token || input.page_token || '';\nreturn [{ json: { page_token: String(pageToken || '') } }];"
       },
-      "id": "fetch_all_playlist_pages",
-      "name": "Fetch All Playlist Pages",
+      "id": "initialize_backfill_state",
+      "name": "Initialize Backfill State",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        420,
-        320
-      ]
+      "position": [360, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/youtube/v3/playlistItems?key=__YOUTUBE_API_KEY__&playlistId=PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz&part=snippet&maxResults=50{{ $json.page_token ? '&pageToken=' + encodeURIComponent($json.page_token) : '' }}",
+        "authentication": "none",
+        "method": "GET",
+        "options": {}
+      },
+      "id": "fetch_youtube_playlist_page",
+      "name": "Fetch YouTube Playlist Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst playlistId = 'PL3lTxqA4f3PhmxU9HEd1Lk17ZoeP4bhfz';\nconst videos = Array.isArray(response.items) ? response.items : [];\nconst nextPageToken = String(response.nextPageToken || '');\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined) return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nreturn videos\n  .map((entry) => {\n    const snippet = entry?.snippet || {};\n    const videoId = snippet?.resourceId?.videoId;\n    if (!videoId) return null;\n\n    const thumbnails = snippet.thumbnails || {};\n    const thumbnail = thumbnails.maxres?.url || thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || '';\n    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;\n    const normalized = {\n      video_id: String(videoId),\n      playlist_id: playlistId,\n      title: String(snippet.title || ''),\n      description: String(snippet.description || ''),\n      thumbnail,\n      youtube_channel: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ''),\n      published_at: String(snippet.publishedAt || ''),\n      video_url: videoUrl,\n      next_page_token: nextPageToken\n    };\n\n    return {\n      json: {\n        ...normalized,\n        sql_video_id: sqlQuote(normalized.video_id),\n        sql_playlist_id: sqlQuote(normalized.playlist_id),\n        sql_title: sqlQuote(normalized.title),\n        sql_description: sqlQuote(normalized.description),\n        sql_thumbnail: sqlQuote(normalized.thumbnail),\n        sql_youtube_channel: sqlQuote(normalized.youtube_channel),\n        sql_published_at: sqlQuote(normalized.published_at),\n        sql_video_url: sqlQuote(normalized.video_url)\n      },\n      pairedItem: { item: 0 }\n    };\n  })\n  .filter(Boolean);"
+      },
+      "id": "normalize_playlist_page_videos",
+      "name": "Normalize Playlist Page Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 400]
     },
     {
       "parameters": {
         "batchSize": 1,
-        "options": {
-          "reset": false
-        }
+        "options": { "reset": false }
       },
       "id": "loop_backfill_videos",
       "name": "Process Backfill Videos One by One",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [
-        700,
-        320
-      ]
+      "position": [1140, 400]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "={{ `WITH claimed AS (\n  INSERT INTO video_log (video_id, playlist_id, processed, status, created_at, updated_at)\n  VALUES (${$json.sql_video_id}, ${$json.sql_playlist_id}, false, 'processing', NOW(), NOW())\n  ON CONFLICT (video_id) DO UPDATE SET\n    processed = false,\n    status = 'processing',\n    error_details = NULL,\n    updated_at = NOW()\n  WHERE video_log.status = 'failed'\n     OR (video_log.status = 'processing' AND video_log.updated_at < NOW() - INTERVAL '1 hour')\n     OR EXISTS (\n       SELECT 1\n       FROM recipes r\n       WHERE r.video_id = video_log.video_id\n         AND (\n           r.processed IS DISTINCT FROM true\n           OR r.nextcloud_pdf_url IS NULL\n           OR r.nextcloud_docx_url IS NULL\n         )\n     )\n  RETURNING video_id\n)\nSELECT\n  ${$json.sql_video_id}::text AS video_id,\n  ${$json.sql_playlist_id}::text AS playlist_id,\n  ${$json.sql_title}::text AS title,\n  ${$json.sql_description}::text AS description,\n  ${$json.sql_thumbnail}::text AS thumbnail,\n  ${$json.sql_youtube_channel}::text AS youtube_channel,\n  ${$json.sql_published_at}::text AS published_at,\n  ${$json.sql_video_url}::text AS video_url,\n  EXISTS (SELECT 1 FROM claimed) AS is_new;` }}",
+        "query": "={{ `WITH claimed AS (\n  INSERT INTO video_log (video_id, playlist_id, processed, status, created_at, updated_at)\n  VALUES (${$json.sql_video_id}, ${$json.sql_playlist_id}, false, 'processing', NOW(), NOW())\n  ON CONFLICT (video_id) DO UPDATE SET\n    processed = false,\n    status = 'processing',\n    error_details = NULL,\n    updated_at = NOW()\n  WHERE video_log.status = 'failed'\n     OR (video_log.status = 'processing' AND video_log.updated_at < NOW() - INTERVAL '1 hour')\n     OR EXISTS (\n       SELECT 1\n       FROM recipes r\n       WHERE r.video_id = video_log.video_id\n         AND (\n           r.processed IS DISTINCT FROM true\n           OR r.nextcloud_pdf_url IS NULL\n           OR r.nextcloud_docx_url IS NULL\n         )\n     )\n  RETURNING video_id\n)\nSELECT\n  ${$json.sql_video_id}::text AS video_id,\n  ${$json.sql_playlist_id}::text AS playlist_id,\n  ${$json.sql_title}::text AS title,\n  ${$json.sql_description}::text AS description,\n  ${$json.sql_thumbnail}::text AS thumbnail,\n  ${$json.sql_youtube_channel}::text AS youtube_channel,\n  ${$json.sql_published_at}::text AS published_at,\n  ${$json.sql_video_url}::text AS video_url,\n  ${$json.next_page_token ? \"'\" + String($json.next_page_token).replace(/'/g, \"''\") + \"'\" : \"''\"}::text AS next_page_token,\n  EXISTS (SELECT 1 FROM claimed) AS is_new;` }}",
         "additionalFields": {}
       },
       "id": "claim_backfill_video",
       "name": "Claim Backfill Video",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [
-        940,
-        420
-      ],
+      "position": [1400, 500],
       "credentials": {
-        "postgres": {
-          "id": "MHjN5hbuya1gKM8g",
-          "name": "Postgres_Recipe"
-        }
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
       }
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
           "conditions": [
             {
               "id": "condition_backfill_is_new_or_retry",
               "leftValue": "={{ $json.is_new }}",
               "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
             }
           ],
           "combinator": "and"
@@ -106,10 +101,7 @@
       "name": "Should Process Video?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [
-        1180,
-        420
-      ]
+      "position": [1660, 500]
     },
     {
       "parameters": {
@@ -117,48 +109,30 @@
         "url": "https://n8n.csc-ua.tech/webhook/recipe-extract",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { videoId: $json.video_id, title: $json.title, description: $json.description, thumbnail: $json.thumbnail, youtubeChannel: $json.youtube_channel, publishedAt: $json.published_at } }}",
-        "options": {
-          "timeout": 900000
-        }
+        "options": { "timeout": 900000 }
       },
       "id": "call_extract_recipe",
       "name": "Call WF-02 (Extract Recipe)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [
-        1420,
-        320
-      ],
+      "position": [1920, 400],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
           "conditions": [
             {
               "id": "condition_extract_success",
               "leftValue": "={{ !$json.error }}",
               "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
             }
           ],
           "combinator": "and"
@@ -169,10 +143,7 @@
       "name": "Extraction Successful?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [
-        1660,
-        320
-      ]
+      "position": [2180, 400]
     },
     {
       "parameters": {
@@ -184,15 +155,9 @@
       "name": "Mark Backfill Completed",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [
-        1900,
-        240
-      ],
+      "position": [2440, 320],
       "credentials": {
-        "postgres": {
-          "id": "MHjN5hbuya1gKM8g",
-          "name": "Postgres_Recipe"
-        }
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
       }
     },
     {
@@ -205,148 +170,107 @@
       "name": "Mark Backfill Failed",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [
-        1900,
-        400
-      ],
+      "position": [2440, 480],
       "credentials": {
-        "postgres": {
-          "id": "MHjN5hbuya1gKM8g",
-          "name": "Postgres_Recipe"
-        }
+        "postgres": { "id": "MHjN5hbuya1gKM8g", "name": "Postgres_Recipe" }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "condition_has_next_page",
+              "leftValue": "={{ Boolean($json.next_page_token) }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_has_next_page",
+      "name": "Has Next Playlist Page?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1400, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.csc-ua.tech/webhook/recipe-backfill-all",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { page_token: $json.next_page_token } }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "start_next_playlist_page",
+      "name": "Start Next Playlist Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1660, 240]
     }
   ],
   "connections": {
     "Manual Backfill Trigger": {
-      "main": [
-        [
-          {
-            "node": "Fetch All Playlist Pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Initialize Backfill State", "type": "main", "index": 0 }]]
     },
     "Webhook Backfill Trigger": {
-      "main": [
-        [
-          {
-            "node": "Fetch All Playlist Pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Initialize Backfill State", "type": "main", "index": 0 }]]
     },
-    "Fetch All Playlist Pages": {
-      "main": [
-        [
-          {
-            "node": "Process Backfill Videos One by One",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Initialize Backfill State": {
+      "main": [[{ "node": "Fetch YouTube Playlist Page", "type": "main", "index": 0 }]]
+    },
+    "Fetch YouTube Playlist Page": {
+      "main": [[{ "node": "Normalize Playlist Page Videos", "type": "main", "index": 0 }]]
+    },
+    "Normalize Playlist Page Videos": {
+      "main": [[{ "node": "Process Backfill Videos One by One", "type": "main", "index": 0 }]]
     },
     "Process Backfill Videos One by One": {
       "main": [
-        [],
-        [
-          {
-            "node": "Claim Backfill Video",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Has Next Playlist Page?", "type": "main", "index": 0 }],
+        [{ "node": "Claim Backfill Video", "type": "main", "index": 0 }]
       ]
     },
     "Claim Backfill Video": {
-      "main": [
-        [
-          {
-            "node": "Should Process Video?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Should Process Video?", "type": "main", "index": 0 }]]
     },
     "Should Process Video?": {
       "main": [
-        [
-          {
-            "node": "Call WF-02 (Extract Recipe)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Process Backfill Videos One by One",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Call WF-02 (Extract Recipe)", "type": "main", "index": 0 }],
+        [{ "node": "Process Backfill Videos One by One", "type": "main", "index": 0 }]
       ]
     },
     "Call WF-02 (Extract Recipe)": {
-      "main": [
-        [
-          {
-            "node": "Extraction Successful?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Extraction Successful?", "type": "main", "index": 0 }]]
     },
     "Extraction Successful?": {
       "main": [
-        [
-          {
-            "node": "Mark Backfill Completed",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Mark Backfill Failed",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Mark Backfill Completed", "type": "main", "index": 0 }],
+        [{ "node": "Mark Backfill Failed", "type": "main", "index": 0 }]
       ]
     },
     "Mark Backfill Completed": {
-      "main": [
-        [
-          {
-            "node": "Process Backfill Videos One by One",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Process Backfill Videos One by One", "type": "main", "index": 0 }]]
     },
     "Mark Backfill Failed": {
+      "main": [[{ "node": "Process Backfill Videos One by One", "type": "main", "index": 0 }]]
+    },
+    "Has Next Playlist Page?": {
       "main": [
-        [
-          {
-            "node": "Process Backfill Videos One by One",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Start Next Playlist Page", "type": "main", "index": 0 }],
+        []
       ]
     }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "description": "Manual admin backfill workflow. Fetches every page from the YouTube playlist, then processes videos sequentially with duplicate and incomplete-recipe protection."
+  "settings": { "executionOrder": "v1" },
+  "description": "Manual/admin backfill workflow. Fetches YouTube playlist pages with native HTTP Request nodes and processes videos sequentially with duplicate and incomplete-recipe protection."
 }
