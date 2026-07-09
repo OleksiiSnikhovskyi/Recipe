@@ -94,7 +94,20 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $('Get File Payload').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_docx_path,\n    filename: payload.docx_filename,\n    file_kind: 'docx'\n  },\n  binary: {\n    data: {\n      data: payload.docx_base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n      fileName: payload.docx_filename,\n      fileExtension: 'docx'\n    }\n  }\n}];"
+        "jsCode": "const payload = $('Get File Payload').item.json;\n\nconst allowedCategories = new Set([\n  'Перші страви',\n  'Другі страви',\n  'Десерти',\n  'Закуски',\n  'Салати',\n  'Випічка',\n  'Напої',\n  'Консервація',\n  'Інше'\n]);\n\nfunction cleanText(value, fallback = 'recipe') {\n  let text = String(value || fallback).normalize('NFKC');\n  text = text.replace(/[\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}]/gu, '');\n  text = text.replace(/[<>:\"/\\\\|?*\\x00-\\x1f]/g, ' ');\n  text = text.replace(/[’'`]/g, '');\n  text = text.replace(/\\.+/g, ' ');\n  text = text.replace(/[^\\p{L}\\p{N}\\s()_-]/gu, ' ');\n  text = text.replace(/\\s+/g, ' ').trim();\n  return text || fallback;\n}\n\nfunction clamp(value, maxLength = 70) {\n  const text = cleanText(value);\n  return text.length > maxLength ? text.slice(0, maxLength).trim() : text;\n}\n\nfunction normalizeFolder(folder) {\n  return '/' + String(folder || '/Documents/Recipe')\n    .split('/')\n    .map((part) => cleanText(part, ''))\n    .filter(Boolean)\n    .join('/');\n}\n\nconst category = allowedCategories.has(String(payload.category || '').trim())\n  ? String(payload.category).trim()\n  : 'Інше';\nconst recipeId = payload.recipe_id || payload.id || '';\nconst title = clamp(payload.title || payload.filename || 'recipe');\nconst baseName = recipeId ? `${recipeId} - ${title}` : title;\nconst nextcloudRoot = normalizeFolder(payload.nextcloud_root_folder || '/Documents/Recipe');\nconst nextcloudFolder = `${nextcloudRoot}/${category}`;\nconst remoteDocxPath = `${nextcloudFolder}/${baseName}.docx`;\nconst remotePdfPath = `${nextcloudFolder}/${baseName}.pdf`;\n\nreturn [{\n  json: {\n    ...payload,\n    category,\n    normalized_title: title,\n    nextcloud_root_folder: nextcloudRoot,\n    nextcloud_folder: nextcloudFolder,\n    remote_docx_path: remoteDocxPath,\n    remote_pdf_path: remotePdfPath,\n    docx_filename: `${baseName}.docx`,\n    pdf_filename: `${baseName}.pdf`\n  }\n}];"
+      },
+      "id": "normalize_nextcloud_paths",
+      "name": "Normalize Nextcloud Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Normalize Nextcloud Paths').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_docx_path,\n    filename: payload.docx_filename,\n    file_kind: 'docx'\n  },\n  binary: {\n    data: {\n      data: payload.docx_base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n      fileName: payload.docx_filename,\n      fileExtension: 'docx'\n    }\n  }\n}];"
       },
       "id": "prepare_docx_binary",
       "name": "Prepare DOCX Binary",
@@ -107,7 +120,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $('Get File Payload').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_pdf_path,\n    filename: payload.pdf_filename,\n    file_kind: 'pdf'\n  },\n  binary: {\n    data: {\n      data: payload.pdf_base64,\n      mimeType: 'application/pdf',\n      fileName: payload.pdf_filename,\n      fileExtension: 'pdf'\n    }\n  }\n}];"
+        "jsCode": "const payload = $('Normalize Nextcloud Paths').item.json;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    remote_path: payload.remote_pdf_path,\n    filename: payload.pdf_filename,\n    file_kind: 'pdf'\n  },\n  binary: {\n    data: {\n      data: payload.pdf_base64,\n      mimeType: 'application/pdf',\n      fileName: payload.pdf_filename,\n      fileExtension: 'pdf'\n    }\n  }\n}];"
       },
       "id": "prepare_pdf_binary",
       "name": "Prepare PDF Binary",
@@ -235,7 +248,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $('Get File Payload').item.json;\nconst docx = $('Share DOCX').item.json;\nconst pdf = $('Share PDF').item.json;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined || value === '') return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction intOrNull(value) {\n  const parsed = Number.parseInt(value, 10);\n  return Number.isFinite(parsed) ? String(parsed) : 'NULL';\n}\n\nconst docxUrl = docx.url || docx.link || '';\nconst pdfUrl = pdf.url || pdf.link || '';\nconst recipeIdSql = intOrNull(payload.recipe_id);\nconst videoIdSql = sqlQuote(payload.video_id);\n\nconst updateSql = `WITH updated_recipe AS (\n  UPDATE recipes\n  SET nextcloud_docx_url = ${sqlQuote(docxUrl)},\n      nextcloud_pdf_url = ${sqlQuote(pdfUrl)},\n      processed = TRUE,\n      updated_at = NOW()\n  WHERE (${recipeIdSql} IS NOT NULL AND id = ${recipeIdSql})\n     OR (${videoIdSql} IS NOT NULL AND video_id = ${videoIdSql})\n  RETURNING id, video_id, title, nextcloud_docx_url, nextcloud_pdf_url\n), updated_log AS (\n  UPDATE video_log\n  SET processed = TRUE,\n      status = 'completed',\n      error_details = NULL,\n      updated_at = NOW()\n  WHERE video_id = (SELECT video_id FROM updated_recipe LIMIT 1)\n  RETURNING video_id\n)\nSELECT * FROM updated_recipe;`;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    nextcloud_folder: payload.nextcloud_folder,\n    nextcloud_docx_url: docxUrl,\n    nextcloud_pdf_url: pdfUrl,\n    update_sql: updateSql\n  }\n}];"
+        "jsCode": "const payload = $('Normalize Nextcloud Paths').item.json;\nconst docx = $('Share DOCX').item.json;\nconst pdf = $('Share PDF').item.json;\n\nfunction sqlQuote(value) {\n  if (value === null || value === undefined || value === '') return 'NULL';\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction intOrNull(value) {\n  const parsed = Number.parseInt(value, 10);\n  return Number.isFinite(parsed) ? String(parsed) : 'NULL';\n}\n\nconst docxUrl = docx.url || docx.link || '';\nconst pdfUrl = pdf.url || pdf.link || '';\nconst recipeIdSql = intOrNull(payload.recipe_id);\nconst videoIdSql = sqlQuote(payload.video_id);\n\nconst updateSql = `WITH updated_recipe AS (\n  UPDATE recipes\n  SET nextcloud_docx_url = ${sqlQuote(docxUrl)},\n      nextcloud_pdf_url = ${sqlQuote(pdfUrl)},\n      processed = TRUE,\n      updated_at = NOW()\n  WHERE (${recipeIdSql} IS NOT NULL AND id = ${recipeIdSql})\n     OR (${videoIdSql} IS NOT NULL AND video_id = ${videoIdSql})\n  RETURNING id, video_id, title, nextcloud_docx_url, nextcloud_pdf_url\n), updated_log AS (\n  UPDATE video_log\n  SET processed = TRUE,\n      status = 'completed',\n      error_details = NULL,\n      updated_at = NOW()\n  WHERE video_id = (SELECT video_id FROM updated_recipe LIMIT 1)\n  RETURNING video_id\n)\nSELECT * FROM updated_recipe;`;\n\nreturn [{\n  json: {\n    recipe_id: payload.recipe_id,\n    video_id: payload.video_id,\n    title: payload.title,\n    category: payload.category,\n    docx_path: payload.docx_path,\n    pdf_path: payload.pdf_path,\n    nextcloud_folder: payload.nextcloud_folder,\n    remote_docx_path: payload.remote_docx_path,\n    remote_pdf_path: payload.remote_pdf_path,\n    nextcloud_docx_url: docxUrl,\n    nextcloud_pdf_url: pdfUrl,\n    update_sql: updateSql\n  }\n}];"
       },
       "id": "prepare_update_sql",
       "name": "Prepare Update SQL",
@@ -299,7 +312,23 @@
       "main": [
         [
           {
-            "node": "Ensure Root Folder",
+            "node": "Normalize Nextcloud Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Nextcloud Paths": {
+      "main": [
+        [
+          {
+            "node": "Prepare DOCX Binary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare PDF Binary",
             "type": "main",
             "index": 0
           }

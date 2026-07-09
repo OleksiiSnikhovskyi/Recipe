@@ -33,7 +33,19 @@ NEXTCLOUD_DAV_USER = os.getenv("NEXTCLOUD_DAV_USER") or NEXTCLOUD_USER
 NEXTCLOUD_PASSWORD = os.getenv("NEXTCLOUD_PASSWORD", "")
 NEXTCLOUD_RECIPE_FOLDER = os.getenv("NEXTCLOUD_RECIPE_FOLDER", "/Documents/Recipe")
 NEXTCLOUD_CREATE_SHARES = os.getenv("NEXTCLOUD_CREATE_SHARES", "true").lower() in {"1", "true", "yes"}
+NEXTCLOUD_ENSURE_FOLDERS = os.getenv("NEXTCLOUD_ENSURE_FOLDERS", "false").lower() in {"1", "true", "yes"}
 NEXTCLOUD_TIMEOUT_SECONDS = int(os.getenv("NEXTCLOUD_TIMEOUT_SECONDS", "120"))
+ALLOWED_CATEGORIES = {
+    "Перші страви",
+    "Другі страви",
+    "Десерти",
+    "Закуски",
+    "Салати",
+    "Випічка",
+    "Напої",
+    "Консервація",
+    "Інше",
+}
 
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
@@ -128,9 +140,34 @@ def normalize_remote_folder(folder: str, category: str = "") -> str:
 
 def safe_filename(value: str, fallback: str = "recipe") -> str:
     value = (value or fallback).strip()
-    value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
+    value = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF]", "", value)
+    value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", value)
+    value = re.sub(r"[’'`]", "", value)
+    value = re.sub(r"\.+", " ", value)
+    value = re.sub(r"[^\w\s()\-]", " ", value, flags=re.UNICODE)
     value = re.sub(r"\s+", " ", value).strip(" .")
-    return value or fallback
+    value = value or fallback
+    return value[:70].strip()
+
+
+def safe_category(value: str) -> str:
+    category = safe_filename(value or "", "Інше")
+    return category if category in ALLOWED_CATEGORIES else "Інше"
+
+
+def build_remote_paths(inputs: Dict[str, Any]) -> Dict[str, str]:
+    recipe_id = inputs.get("recipe_id")
+    title = safe_filename(inputs.get("title"), "recipe")
+    base_name = f"{recipe_id} - {title}" if recipe_id else title
+    category = safe_category(inputs.get("category"))
+    remote_folder = normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER, category)
+
+    return {
+        "category": category,
+        "remote_folder": remote_folder,
+        "remote_docx_path": f"{remote_folder}/{base_name}.docx",
+        "remote_pdf_path": f"{remote_folder}/{base_name}.pdf",
+    }
 
 
 def remote_path_to_webdav_url(remote_path: str) -> str:
@@ -258,15 +295,16 @@ def upload_to_nextcloud(**kwargs: Any) -> Dict[str, Any]:
     docx_path = Path(docx_path_value)
     pdf_path = Path(pdf_path_value)
 
-    base_name = safe_filename(inputs["title"])
-    remote_folder = normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER, safe_filename(inputs["category"], "Інше"))
-    remote_docx_path = f"{remote_folder}/{base_name}.docx"
-    remote_pdf_path = f"{remote_folder}/{base_name}.pdf"
+    remote = build_remote_paths(inputs)
+    remote_folder = remote["remote_folder"]
+    remote_docx_path = remote["remote_docx_path"]
+    remote_pdf_path = remote["remote_pdf_path"]
 
     session = requests.Session()
     session.auth = (NEXTCLOUD_USER, NEXTCLOUD_PASSWORD)
 
-    ensure_remote_folders(session, remote_folder)
+    if NEXTCLOUD_ENSURE_FOLDERS:
+        ensure_remote_folders(session, remote_folder)
     docx_url = upload_file(session, docx_path, remote_docx_path)
     pdf_url = upload_file(session, pdf_path, remote_pdf_path)
     docx_share_link = create_share_link(session, remote_docx_path)
@@ -286,7 +324,7 @@ def upload_to_nextcloud(**kwargs: Any) -> Dict[str, Any]:
         "recipe_id": inputs.get("recipe_id"),
         "video_id": inputs.get("video_id"),
         "title": inputs["title"],
-        "category": inputs["category"],
+        "category": remote["category"],
         "docx_path": str(docx_path),
         "pdf_path": str(pdf_path),
         "nextcloud_folder": remote_folder,
@@ -317,18 +355,17 @@ def recipe_file_payload(**kwargs: Any) -> Dict[str, Any]:
     if not pdf_path.exists() or not pdf_path.is_file():
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
-    base_name = safe_filename(inputs["title"])
-    category = safe_filename(inputs["category"], "Інше")
-    remote_folder = normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER, category)
-    remote_docx_path = f"{remote_folder}/{base_name}.docx"
-    remote_pdf_path = f"{remote_folder}/{base_name}.pdf"
+    remote = build_remote_paths(inputs)
+    remote_folder = remote["remote_folder"]
+    remote_docx_path = remote["remote_docx_path"]
+    remote_pdf_path = remote["remote_pdf_path"]
 
     return {
         "ok": True,
         "recipe_id": inputs.get("recipe_id"),
         "video_id": inputs.get("video_id"),
         "title": inputs["title"],
-        "category": inputs["category"],
+        "category": remote["category"],
         "docx_path": str(docx_path),
         "pdf_path": str(pdf_path),
         "nextcloud_root_folder": normalize_remote_folder(NEXTCLOUD_RECIPE_FOLDER),

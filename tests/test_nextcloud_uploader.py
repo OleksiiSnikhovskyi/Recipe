@@ -100,7 +100,7 @@ def test_recipe_file_payload_reads_local_files(monkeypatch, tmp_path):
     )
 
     assert result["ok"] is True
-    assert result["remote_docx_path"] == "/Documents/Recipe/Основні страви/Курка з млинцями.docx"
-    assert result["remote_pdf_path"] == "/Documents/Recipe/Основні страви/Курка з млинцями.pdf"
+    assert result["remote_docx_path"] == "/Documents/Recipe/Інше/35 - Курка з млинцями.docx"
+    assert result["remote_pdf_path"] == "/Documents/Recipe/Інше/35 - Курка з млинцями.pdf"
     assert result["docx_base64"] == "ZG9jeA=="
     assert result["pdf_base64"] == "JVBERg=="

@@ -1,11 +1,39 @@
 # Recipe Automation Project - Status Report
 
 **Date:** 2026-07-09
-**Status:** Recovery mode after YouTube rate-limit/IP-block incident.
+**Status:** Stable recovery mode with safe backfill tooling.
+
+## Current Checkpoint - 2026-07-09
+
+Database is normalized after Nextcloud recovery:
+
+| Metric | Count |
+|---|---:|
+| Recipes total | 173 |
+| Recipes processed | 173 |
+| Missing DOCX | 0 |
+| Missing PDF | 0 |
+| Missing Nextcloud DOCX | 0 |
+| Missing Nextcloud PDF | 0 |
+| `video_log completed` | 173 |
+| `video_log skipped` | 278 |
+| `video_log failed` | 0 |
+| `video_log processing` | 0 |
+
+`WF-05` was updated to normalize Nextcloud paths before upload/share. This fixed failures caused by special characters such as `#`, emoji, punctuation, and long filenames.
+
+New safe backfill tooling:
+
+- `scripts/safe_playlist_backfill.py`
+- minimum delay between processed videos: `10` seconds;
+- recommended production delay: `300`-`600` seconds;
+- completed recipes are skipped by default;
+- bad transcript reprocessing is opt-in via `--reprocess-bad-transcripts`;
+- dry-run is supported and should be used first.
 
 ## Executive Summary
 
-The main Recipe pipeline is structurally working, but the project is currently in recovery mode.
+The main Recipe pipeline is structurally working. The project remains conservative around YouTube access because of the previous rate-limit/IP-block incident.
 
 What happened:
 
@@ -18,8 +46,9 @@ What happened:
 Current operating rule:
 
 - Do not run `WF-08`.
-- Do not run mass YouTube backfill from Markiz.
-- Process only targeted recipes until slow-mode/Miledy/VPN/cookies strategy is implemented.
+- Do not run aggressive YouTube backfill from Markiz.
+- Use `scripts/safe_playlist_backfill.py` for controlled playlist work.
+- Reprocess bad transcriptions only in small batches with long delays.
 
 ## Last Known Database Snapshot
 

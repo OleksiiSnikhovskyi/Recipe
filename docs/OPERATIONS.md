@@ -151,6 +151,58 @@ Required redesign:
 - hard daily cap;
 - optional Miledy/VPN/cookies route for YouTube transcript/audio.
 
+## 6.1 Safe Playlist Backfill Script
+
+Use `scripts/safe_playlist_backfill.py` instead of `WF-08` for controlled playlist processing.
+
+Rules:
+
+- Minimum delay between processed videos is enforced at `10` seconds.
+- Default delay is `60` seconds. For production recovery, prefer `300`-`600` seconds.
+- Completed recipes are skipped by default.
+- Low-confidence transcript reprocessing is opt-in via `--reprocess-bad-transcripts`.
+- Always start with `--dry-run`.
+
+Dry run for the first 20 playlist items:
+
+```bash
+cd /opt/recipe-automation
+source venv/bin/activate
+
+python scripts/safe_playlist_backfill.py \
+  --dry-run \
+  --scan-limit 20 \
+  --delay-seconds 60
+```
+
+Process up to 5 missing/incomplete recipes:
+
+```bash
+python scripts/safe_playlist_backfill.py \
+  --limit 5 \
+  --delay-seconds 300 \
+  --page-delay-seconds 60
+```
+
+Reprocess up to 3 completed recipes with low-confidence transcription:
+
+```bash
+python scripts/safe_playlist_backfill.py \
+  --reprocess-bad-transcripts \
+  --limit 3 \
+  --delay-seconds 600 \
+  --page-delay-seconds 120 \
+  --min-transcript-chars 300
+```
+
+The script calls the existing production webhook:
+
+```text
+https://n8n.csc-ua.tech/webhook/recipe-extract
+```
+
+Do not run large limits from Markiz if YouTube starts returning bot/rate-limit errors.
+
 ## 7. Cleanup SQL
 
 Before cleanup, confirm no workflow is actively processing.
