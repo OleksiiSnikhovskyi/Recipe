@@ -1,84 +1,95 @@
 # TASKS.md - Recipe Automation Project
 
-## Current Session: 2026-06-30 - Checkpoint, Documentation, Backfill
+## Current Session: 2026-07-09 - Recovery After YouTube Blocking
 
 ### Current State
 
-- Phase: `Production backfill and usage`
-- Database: `recipe_db` on Markiz is created and initialized
-- n8n: `WF-01` through `WF-07` are deployed
-- Backfill: `WF-08` export is prepared for full playlist pagination
-- Python services: `5010` through `5013` are implemented and tested
-- Nextcloud: files are stored under `/Documents/Recipe/{category}`
-- Telegram: notifications and recipe search are working
+- Phase: `Recovery / stabilization`
+- n8n: `WF-08` is disabled and must stay disabled.
+- YouTube: Markiz IP was blocked/rate-limited during aggressive backfill.
+- Database: contains completed recipes plus many stale/failed/incomplete records from the incident.
+- Python services: must be manually checked on ports `5010`-`5013`.
+- Telegram search and Nextcloud upload remain part of the target production chain.
 
 ## Completed
 
-- [x] Create project documentation set
-- [x] Create repository structure
-- [x] Create PostgreSQL schema:
-  - [x] `recipes`
-  - [x] `video_log`
-  - [x] `playlist_tracking`
-  - [x] `execution_log`
-  - [x] `telegram_search_sessions`
-- [x] Add indexes and analytics views
-- [x] Implement `scripts/setup_database.py`
-- [x] Implement `scripts/parse_recipe.py`
-- [x] Implement `scripts/import_recipes.py`
-- [x] Implement `scripts/generate_docx.py`
-- [x] Implement `scripts/pdf_converter.py`
-- [x] Implement `scripts/nextcloud_uploader.py`
-- [x] Export all `7` n8n workflow JSON files
-- [x] Prepare Telegram bot credential for notifications
-- [x] Rebuild WF-01 as a batch-size-1 sequential loop
-- [x] Add atomic video claiming, duplicate protection, retries, and failure status handling
-- [x] Fix WF-02 webhook body access and delayed completion response
-- [x] Add multilingual YouTube caption/Whisper transcription to `parse_recipe.py`
-- [x] Add migration `002_sequential_video_processing.sql`
-- [x] Add migration `003_recipe_search_sessions.sql`
-- [x] Confirm imported workflows use connected credentials
-- [x] Test workflow chain from `WF-02` through Nextcloud upload
-- [x] Add `WF-07` Telegram recipe search workflow with numbered result selection
-- [x] Verify Telegram search works
-- [x] Update usage and operations documentation
-- [x] Add `WF-08` full playlist backfill workflow export
+- [x] Create PostgreSQL schema and migrations.
+- [x] Implement Python services:
+  - [x] `parse_recipe.py`
+  - [x] `generate_docx.py`
+  - [x] `pdf_converter.py`
+  - [x] `nextcloud_uploader.py`
+- [x] Implement sequential WF-01 monitor for newest 50 playlist items.
+- [x] Implement WF-02 extraction/document/upload chain.
+- [x] Implement WF-03 DOCX generation.
+- [x] Implement WF-04 PDF conversion.
+- [x] Implement WF-05 Nextcloud upload.
+- [x] Implement WF-07 Telegram recipe search.
+- [x] Add WF-08 full playlist backfill attempt.
+- [x] Stop WF-08 after execution storm.
+- [x] Restart `parse_recipe.py` on `5010`.
+- [x] Restart `generate_docx.py` on `5011`.
+- [x] Restart `pdf_converter.py` on `5012`.
+- [x] Test extraction for `recipe_id=18`: extraction and DOCX succeeded.
+- [x] Add local hotfix so `pdf_converter.py` can resolve `docx_path` by `recipe_id`.
 
 ## In Progress
 
-- [ ] Deploy `WF-08-recipe-backfill-all-playlist.json`
-- [ ] Run one-time WF-08 backfill for all playlist recipes
-- [ ] Monitor Python logs and n8n executions during backfill
-- [ ] Confirm counts in `recipes`, `video_log`, and Nextcloud links
+- [ ] Push commit `3e1a8d8 Allow PDF conversion by recipe id`.
+- [ ] Pull latest code on Markiz.
+- [ ] Restart `5012` after pulling the hotfix.
+- [ ] Re-run PDF for `recipe_id=18`.
+- [ ] Upload `recipe_id=18` to Nextcloud.
+- [ ] Verify `recipes.nextcloud_pdf_url` and `recipes.nextcloud_docx_url` for `recipe_id=18`.
 
-## Later Improvements
+## Recovery Queue
 
-- [ ] Implement or refine `nutrition_calculator.py`
-- [ ] Add Telegram commands:
-  - [ ] `/latest`
-  - [ ] `/categories`
-  - [ ] `/recipe <id>`
-- [ ] Add inline buttons for search results if needed
-- [ ] Convert Python services to systemd units or Docker services
-- [ ] Rotate exposed keys after stabilization
+- [ ] Confirm all four services are reachable from n8n container:
+  - [ ] `172.18.0.1:5010`
+  - [ ] `172.18.0.1:5011`
+  - [ ] `172.18.0.1:5012`
+  - [ ] `172.18.0.1:5013`
+- [ ] Decide whether to temporarily disable `WF-01` while services are not managed by systemd/Docker.
+- [ ] Create SQL report for:
+  - [ ] stale `video_log.status = 'processing'`;
+  - [ ] `video_log.status = 'failed'`;
+  - [ ] `recipes.transcript_source = 'description_only'`;
+  - [ ] `recipes.transcription_warning IS NOT NULL`;
+  - [ ] missing Nextcloud URLs.
+- [ ] Create cleanup migration for stale `processing` records.
+- [ ] Create reprocess workflow/script for bad records.
 
-## Backfill Command
+## Do Not Do Yet
 
-Run newest 50 on Markiz:
+- [ ] Do not run `WF-08`.
+- [ ] Do not run mass YouTube backfill from Markiz.
+- [ ] Do not retry all failed records at once.
+- [ ] Do not query YouTube aggressively while IP reputation is cooling down.
+
+## Safe Manual Test Commands
+
+Generate DOCX for an already extracted recipe:
 
 ```bash
-cd /opt/recipe-automation
-docker exec -d n8n-docker_n8n_1 n8n execute --id 9QXzE48DP7rcZ0ft
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-docx \
+  -H "Content-Type: application/json" \
+  -d '{"recipe_id": 18}'
 ```
 
-WF-01 processes the newest 50 playlist videos sequentially. Already completed recipes are skipped.
-
-Run all playlist videos after deploying WF-08:
+Generate PDF after the `pdf_converter.py` hotfix is deployed:
 
 ```bash
-cd /opt/recipe-automation
-python scripts/deploy_recipe_workflows.py --only WF-08-recipe-backfill-all-playlist.json
-curl -X POST https://n8n.csc-ua.tech/webhook/recipe-backfill-all
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-pdf \
+  -H "Content-Type: application/json" \
+  -d '{"recipe_id": 18}'
+```
+
+Upload to Nextcloud after DOCX and PDF exist:
+
+```bash
+curl -X POST https://n8n.csc-ua.tech/webhook/recipe-nextcloud \
+  -H "Content-Type: application/json" \
+  -d '{"recipe_id": 18}'
 ```
 
 ## Monitoring Commands
@@ -93,7 +104,9 @@ psql -h 127.0.0.1 -U recipe_user -d recipe_db -P pager=off -c "
 SELECT
   COUNT(*) AS recipes,
   COUNT(*) FILTER (WHERE processed = true) AS processed,
-  COUNT(*) FILTER (WHERE nextcloud_pdf_url IS NOT NULL) AS uploaded
+  COUNT(*) FILTER (WHERE nextcloud_pdf_url IS NOT NULL) AS uploaded_pdf,
+  COUNT(*) FILTER (WHERE transcript_source = 'description_only') AS description_only,
+  COUNT(*) FILTER (WHERE transcription_warning IS NOT NULL) AS transcription_warning
 FROM recipes;
 "
 ```
@@ -107,18 +120,20 @@ ORDER BY status;
 "
 ```
 
-## Risks
+## Later Improvements
 
-- Public n8n API is not reliable for manual workflow execution. Use `docker exec ... n8n execute` on Markiz for one-time backfill.
-- Full 50-video backfill can take a long time because transcription and LLM extraction are sequential.
-- Exposed secrets should be rotated after stabilization.
-
-## Notes
-
-- `WF-01` URL: `https://n8n.csc-ua.tech/workflow/9QXzE48DP7rcZ0ft`
-- `WF-07` Telegram search workflow ID: `k9A9VLRcUuU9zFBJ`
-- Main runbook: `docs/OPERATIONS.md`
+- [ ] Convert Python services to systemd units or Docker services.
+- [ ] Add health-check workflow before WF-01 processes videos.
+- [ ] Add global rate limiter for YouTube work.
+- [ ] Add reprocess queue table with `next_attempt_at`.
+- [ ] Add support for Miledy/VPN/cookies transcript extraction.
+- [ ] Add Telegram admin commands:
+  - [ ] `/latest`
+  - [ ] `/categories`
+  - [ ] `/recipe <id>`
+  - [ ] `/failed`
+- [ ] Rotate exposed secrets after stabilization.
 
 ## Last Updated
 
-2026-06-30 by Codex
+2026-07-09 by Codex
