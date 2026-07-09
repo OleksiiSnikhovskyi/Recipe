@@ -51,6 +51,24 @@ def update_pdf_path(recipe_id: Optional[int], video_id: Optional[str], pdf_path:
             )
 
 
+def resolve_docx_path(recipe_id: Optional[int], video_id: Optional[str]) -> Optional[str]:
+    """Resolve the latest DOCX path from the database when only an ID is provided."""
+    if not recipe_id and not video_id:
+        return None
+    where = "id = %s" if recipe_id else "video_id = %s"
+    value = recipe_id if recipe_id else video_id
+    with db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT docx_path FROM recipes WHERE {where} LIMIT 1",
+                (value,),
+            )
+            row = cursor.fetchone()
+    if not row or not row[0]:
+        return None
+    return str(row[0])
+
+
 def expected_pdf_path(docx_path: Path, pdf_path: Optional[str] = None) -> Path:
     if pdf_path:
         return Path(pdf_path)
@@ -135,14 +153,19 @@ def create_flask_app():
         try:
             data: Dict[str, Any] = request.get_json(silent=True) or {}
             docx_path = data.get("docx_path")
+            recipe_id = data.get("recipe_id")
+            video_id = data.get("video_id") or data.get("videoId")
             if not docx_path and data.get("docx_base64"):
                 docx_path = str(write_docx_base64(data["docx_base64"], data.get("filename", "recipe.docx")))
             if not docx_path:
-                return jsonify({"ok": False, "error": "docx_path or docx_base64 is required"}), 400
+                docx_path = resolve_docx_path(recipe_id, video_id)
+            if not docx_path:
+                return jsonify({
+                    "ok": False,
+                    "error": "docx_path, docx_base64, or an existing recipe_id/video_id with docx_path is required",
+                }), 400
 
             pdf_path = convert_docx_to_pdf(docx_path, data.get("pdf_path"))
-            recipe_id = data.get("recipe_id")
-            video_id = data.get("video_id") or data.get("videoId")
             update_pdf_path(recipe_id, video_id, pdf_path)
 
             pdf_bytes = Path(pdf_path).read_bytes()
