@@ -82,3 +82,6 @@ database/data/
 # OS
 Thumbs.db
 .DS_Store
+
+# Run logs of batch/import scripts (local operational output, not source)
+logs/
