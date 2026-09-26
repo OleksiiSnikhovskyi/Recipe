@@ -80,7 +80,7 @@ def safe_filename(value: str, suffix: str = ".docx") -> str:
     value = re.sub(r"\s+", " ", value).strip(" .")
     if not value:
         value = "recipe"
-    return value[:140] + suffix
+    return value[:140].strip(" .") + suffix
 
 
 def format_minutes(value: Any) -> str:
@@ -186,6 +186,21 @@ def add_kv(paragraph, label: str, value: Any) -> None:
     paragraph.add_run(str(value or "не вказано"))
 
 
+def _set_column_widths(table, widths_inches: list) -> None:
+    """python-docx (and the LibreOffice conversion downstream) ignores plain
+    'Table Grid' auto-sizing in practice — every column ends up roughly equal
+    width regardless of content, cramping the ingredient name column. Setting
+    width only on table.columns isn't reliable either; it has to be set on
+    every cell in each column."""
+    table.autofit = False
+    table.allow_autofit = False
+    for row in table.rows:
+        for index, width in enumerate(widths_inches):
+            row.cells[index].width = Inches(width)
+    for index, width in enumerate(widths_inches):
+        table.columns[index].width = Inches(width)
+
+
 def iter_ingredients(ingredients: Iterable[Dict[str, Any]]) -> Iterable[tuple]:
     for item in ingredients:
         if not isinstance(item, dict):
@@ -208,12 +223,17 @@ def _nutrition_has_values(nutrition: Dict[str, Any]) -> bool:
 
 
 def _add_thumbnail(doc: Document, thumbnail_url: str) -> None:
+    """thumbnail_url may be an http(s) URL (YouTube thumbnail) or a local
+    file path (photo embedded in a source document)."""
     if not thumbnail_url:
         return
     try:
-        response = requests.get(thumbnail_url, timeout=20)
-        response.raise_for_status()
-        image = BytesIO(response.content)
+        if thumbnail_url.startswith("http://") or thumbnail_url.startswith("https://"):
+            response = requests.get(thumbnail_url, timeout=20)
+            response.raise_for_status()
+            image = BytesIO(response.content)
+        else:
+            image = BytesIO(Path(thumbnail_url).read_bytes())
         paragraph = doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run()
@@ -221,7 +241,7 @@ def _add_thumbnail(doc: Document, thumbnail_url: str) -> None:
     except Exception as exc:
         warning = doc.add_paragraph()
         warning.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        warning_run = warning.add_run(f"Фото з YouTube не вдалося завантажити: {exc}")
+        warning_run = warning.add_run(f"Фото не вдалося завантажити: {exc}")
         warning_run.italic = True
         warning_run.font.size = Pt(9)
 
@@ -312,6 +332,7 @@ def generate_docx(recipe: Dict[str, Any]) -> bytes:
             row[1].text = "" if quantity is None else str(quantity)
             row[2].text = str(unit or "")
             row[3].text = str(notes or "")
+        _set_column_widths(table, [3.2, 1.0, 0.9, 1.9])
     else:
         doc.add_paragraph("Інгредієнти не вказані.")
 
@@ -352,6 +373,7 @@ def generate_docx(recipe: Dict[str, Any]) -> bytes:
             row[2].text = str(values.get("protein", ""))
             row[3].text = str(values.get("fat", ""))
             row[4].text = str(values.get("carbohydrates", ""))
+        _set_column_widths(table, [1.6, 1.35, 1.35, 1.35, 1.35])
 
     add_heading(doc, "Джерело", 2)
     source_paragraph = doc.add_paragraph()

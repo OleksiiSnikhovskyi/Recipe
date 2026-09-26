@@ -11,6 +11,7 @@ python-dotenv==1.0.0            # Load .env files
 python-docx==0.8.11             # Generate DOCX files
 pdf2docx==0.5.1                 # PDF to DOCX conversion (optional)
 qrcode[pil]>=7.4,<8             # Generate QR codes for source video links
+opencv-python-headless>=4.9,<5   # QR code detection in embedded recipe-card images
 
 # Data Processing
 openpyxl==3.1.2                 # Excel file handling (optional)
@@ -29,6 +30,7 @@ faster-whisper>=1.1,<2          # Local multilingual transcription fallback
 python-dateutil==2.8.2          # Date utilities
 pytz==2023.3                    # Timezone handling
 pyyaml==6.0.1                   # YAML parsing (optional)
+json-repair>=0.25,<1              # repair malformed LLM JSON output
 
 # Logging & Monitoring
 loguru==0.7.2                   # Advanced logging (optional)

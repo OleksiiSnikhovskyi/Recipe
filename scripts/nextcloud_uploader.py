@@ -18,6 +18,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote
@@ -210,32 +211,69 @@ def upload_file(session: requests.Session, local_path: Path, remote_path: str) -
     return url
 
 
-def create_share_link(session: requests.Session, remote_path: str) -> str:
-    if not NEXTCLOUD_CREATE_SHARES:
-        return ""
-
-    response = session.post(
+def find_existing_share_link(session: requests.Session, remote_path: str) -> str:
+    """Look up a share that already exists for this path so re-runs don't
+    create duplicates and don't spend a share-creation call needlessly."""
+    response = session.get(
         f"{NEXTCLOUD_URL}/ocs/v2.php/apps/files_sharing/api/v1/shares",
         headers={"OCS-APIRequest": "true", "Accept": "application/json"},
-        data={
-            "path": remote_path_to_files_path(remote_path),
-            "shareType": 3,
-            "permissions": 1,
-        },
+        params={"path": remote_path_to_files_path(remote_path), "reshares": "false"},
         timeout=NEXTCLOUD_TIMEOUT_SECONDS,
     )
-    if response.status_code not in {200, 201}:
+    if response.status_code != 200:
         return ""
-
     try:
         payload = response.json()
     except ValueError:
         return ""
+    for entry in payload.get("ocs", {}).get("data", []) or []:
+        if isinstance(entry, dict) and entry.get("share_type") == 3 and entry.get("url"):
+            return entry["url"]
+    return ""
 
-    data = payload.get("ocs", {}).get("data", {})
-    if isinstance(data, list):
-        data = data[0] if data else {}
-    return data.get("url", "") if isinstance(data, dict) else ""
+
+def create_share_link(session: requests.Session, remote_path: str) -> str:
+    """Nextcloud rate-limits the share-creation endpoint (HTTP 429) under
+    bursts of calls, which a batch upload run easily triggers; retry with
+    backoff instead of silently falling back to a login-only WebDAV URL."""
+    if not NEXTCLOUD_CREATE_SHARES:
+        return ""
+
+    existing = find_existing_share_link(session, remote_path)
+    if existing:
+        return existing
+
+    backoff_seconds = [5, 15, 30]
+    for attempt in range(len(backoff_seconds) + 1):
+        response = session.post(
+            f"{NEXTCLOUD_URL}/ocs/v2.php/apps/files_sharing/api/v1/shares",
+            headers={"OCS-APIRequest": "true", "Accept": "application/json"},
+            data={
+                "path": remote_path_to_files_path(remote_path),
+                "shareType": 3,
+                "permissions": 1,
+            },
+            timeout=NEXTCLOUD_TIMEOUT_SECONDS,
+        )
+        if response.status_code == 429:
+            if attempt < len(backoff_seconds):
+                time.sleep(backoff_seconds[attempt])
+                continue
+            return ""
+        if response.status_code not in {200, 201}:
+            return ""
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return ""
+
+        data = payload.get("ocs", {}).get("data", {})
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        return data.get("url", "") if isinstance(data, dict) else ""
+
+    return ""
 
 
 def write_base64_file(encoded: str, filename: str, suffix: str) -> Path:

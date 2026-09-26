@@ -34,7 +34,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
+OPENAI_TIMEOUT_SECONDS = int(os.getenv("OPENAI_TIMEOUT_SECONDS", "600"))
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "600"))
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "16384"))
 MAX_SOURCE_TEXT_CHARS = int(os.getenv("MAX_SOURCE_TEXT_CHARS", "24000"))
 TRANSCRIPTION_ENABLED = os.getenv("TRANSCRIPTION_ENABLED", "true").lower() == "true"
 WHISPER_FALLBACK_ENABLED = os.getenv("WHISPER_FALLBACK_ENABLED", "true").lower() == "true"
@@ -98,6 +101,31 @@ UNIT_PATTERN = (
     r"кг|гр|г|грам(?:ів)?|мл|л|шт\.?|штук|зуб(?:\.|чики?)?|"
     r"ч\.?\s*л\.?|ст\.?\s*л\.?"
 )
+
+def _parse_json_response(content: str) -> Dict[str, Any]:
+    """LLM JSON output isn't always clean: it may be wrapped in a markdown
+    fence, prefixed with reasoning text, or contain a small syntax slip
+    (stray comma, unescaped quote) in a large structured object. Try direct
+    parsing, then fence-stripping, then a best-effort repair before giving up."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    stripped = content
+    if "```json" in stripped:
+        stripped = stripped.split("```json")[1].split("```")[0]
+    elif "```" in stripped:
+        stripped = stripped.split("```")[1].split("```")[0]
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    from json_repair import repair_json
+
+    return json.loads(repair_json(stripped))
+
 
 RECIPE_SCHEMA_PROMPT = """Return ONLY valid JSON matching Recipe Schema v1.1:
 {
@@ -495,33 +523,29 @@ def _steps_have_unsupported_foods(
 
 
 def _fallback_steps_from_explicit_ingredients(ingredients: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    names = {item.get("name", "").lower() for item in ingredients}
-    has_pancakes = any(name in names for name in ("яйця", "молока", "борошно"))
-    has_chicken = any("кур" in name for name in names)
-    has_filling = any(name in names for name in ("печериці", "цибуля", "морква по корейські", "часник"))
+    """Honest fallback when LLM steps are rejected for unsupported ingredients.
 
-    steps = []
-    if has_pancakes:
-        steps.append("Приготуйте млинці з яєць, молока, олії, солі, цукру, крохмалю та борошна.")
-    if has_chicken:
-        steps.append("Підготуйте курку для фарширування.")
-    if has_filling:
-        steps.append("Підготуйте начинку з цибулі, печериць, часнику та моркви по-корейськи.")
-    if has_chicken and has_pancakes:
-        steps.append("Нафаршируйте курку підготовленими млинцями та начинкою.")
-        steps.append("Запікайте курку до готовності; точний час і температуру потрібно уточнити з відео.")
-    if not steps:
-        steps.append("Спосіб приготування потрібно уточнити з відео або повної транскрипції.")
+    Never fabricate cooking actions for a specific dish here: this used to
+    pattern-match on a handful of ingredient names and reconstruct steps for
+    one particular recipe, which silently produced wrong instructions for any
+    other recipe that happened to share an ingredient (e.g. eggs + chicken).
+    """
+    names = [item.get("name", "").strip() for item in ingredients if item.get("name")]
+    if names:
+        instruction = (
+            "Кроки, запропоновані LLM, містили інгредієнти, яких немає у джерелі, "
+            "і були відхилені. Спосіб приготування потрібно дописати вручну з джерела. "
+            "Інгредієнти: " + ", ".join(names) + "."
+        )
+    else:
+        instruction = "Спосіб приготування потрібно уточнити з джерела вручну."
 
-    return [
-        {
-            "step_number": index,
-            "instruction": instruction,
-            "duration_minutes": None,
-            "notes": "",
-        }
-        for index, instruction in enumerate(steps, start=1)
-    ]
+    return [{
+        "step_number": 1,
+        "instruction": instruction,
+        "duration_minutes": None,
+        "notes": "",
+    }]
 
 
 def _normalize_ingredients(value: Any) -> list:
@@ -724,7 +748,8 @@ Return this JSON structure:
                 "stream": False,
                 "think": False,
                 "options": {
-                    "temperature": 0.1
+                    "temperature": 0.1,
+                    "num_ctx": OLLAMA_NUM_CTX
                 }
             },
             timeout=OLLAMA_TIMEOUT_SECONDS
@@ -734,16 +759,7 @@ Return this JSON structure:
         result = response.json()
         content = result["message"]["content"]
 
-        # Parse JSON from response
-        try:
-            recipe_data = json.loads(content)
-        except json.JSONDecodeError:
-            # Try to extract JSON from response if wrapped in markdown
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-            recipe_data = json.loads(content)
+        recipe_data = _parse_json_response(content)
 
         return normalize_recipe(recipe_data, video_metadata, None, f"ollama:{OLLAMA_MODEL}")
 
@@ -774,7 +790,7 @@ def extract_recipe_openai(description: str, video_metadata: Dict[str, Any]) -> D
         print("Error: OPENAI_API_KEY not set in environment", file=sys.stderr)
         sys.exit(1)
 
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    client = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL or None, timeout=OPENAI_TIMEOUT_SECONDS)
 
     system_prompt = """You are a precise culinary data extraction specialist.
 Extract a complete, structured recipe from the provided YouTube source text.
@@ -819,11 +835,11 @@ Return this JSON structure:
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.2,
-            max_tokens=2000
+            max_tokens=4096
         )
 
         content = response.choices[0].message.content
-        recipe_data = json.loads(content)
+        recipe_data = _parse_json_response(content)
 
         return normalize_recipe(recipe_data, video_metadata, None, f"openai:{OPENAI_MODEL}")
 

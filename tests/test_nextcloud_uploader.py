@@ -36,6 +36,11 @@ class FakeSession:
         self.calls.append(("POST", url, headers, data, timeout))
         return FakeResponse(200, payload={"ocs": {"data": {"url": "https://nextcloud/s/share"}}})
 
+    def get(self, url, headers, params, timeout):
+        # Share lookup before creation: no existing public share by default.
+        self.calls.append(("GET", url, params, timeout))
+        return FakeResponse(200, payload={"ocs": {"data": []}})
+
 
 def test_remote_path_to_webdav_url_encodes_unicode(monkeypatch):
     monkeypatch.setattr(nextcloud_uploader, "NEXTCLOUD_URL", "https://nextcloud.example")
@@ -80,6 +85,22 @@ def test_create_share_link_returns_empty_on_failure(monkeypatch):
     monkeypatch.setattr(nextcloud_uploader, "NEXTCLOUD_CREATE_SHARES", True)
 
     assert nextcloud_uploader.create_share_link(FailingSession(), "/Documents/Recipe/a.pdf") == ""
+
+
+def test_create_share_link_reuses_an_existing_public_share(monkeypatch):
+    class ExistingShareSession(FakeSession):
+        def get(self, url, headers, params, timeout):
+            self.calls.append(("GET", url, params, timeout))
+            return FakeResponse(200, payload={"ocs": {"data": [
+                {"share_type": 0, "url": "https://nextcloud/s/user-share"},
+                {"share_type": 3, "url": "https://nextcloud/s/public-share"},
+            ]}})
+
+    monkeypatch.setattr(nextcloud_uploader, "NEXTCLOUD_CREATE_SHARES", True)
+    session = ExistingShareSession()
+
+    assert nextcloud_uploader.create_share_link(session, "/Documents/Recipe/a.pdf") == "https://nextcloud/s/public-share"
+    assert not [call for call in session.calls if call[0] == "POST"]
 
 
 def test_recipe_file_payload_reads_local_files(monkeypatch, tmp_path):
