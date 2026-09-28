@@ -470,9 +470,13 @@ Session protocol (full text in the NA10 AGENTS.md):
 - Start: fetch; clean `main`; no other open session/branch/PR on this project;
   read the task file; take the owner's directives:
   `/mnt/raid0/NA10-data/venvs/na10-platform/bin/python /mnt/raid0/NA10/services/na10-platform/scripts/owner_inbox.py list --project <name>`.
+- During: local models first for routine bounded subtasks (qwen2.5-coder:14b code,
+  qwen3:14b Ukrainian text, gemma4:12b extraction) via
+  `python3 /mnt/raid0/NA10/scripts/ask_model.py --target miledy --model <m> --prompt "..."`;
+  you review and test; never delegate architecture/security/production decisions.
 - Finish (handoff, mandatory): update the task file and its `## Де зупинились`
   note (date, tool, plain Ukrainian); add an entry to `/mnt/raid0/NA10/docs/execution/IMPORT_LOG.md`
-  naming the tool; close handled directives with `owner_inbox.py done <id> --note "..."`;
+  naming the tool and what was delegated to local models; close handled directives with `owner_inbox.py done <id> --note "..."`;
   short-lived branch -> PR -> merged into `main` the same day.
 - Commit trailer: `Agent: Claude Code`. Never print or commit secrets.
 <!-- NA10-AGENT-RULES:END -->
